@@ -1,0 +1,1970 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
+<title>ابشر بالجواب</title>
+<meta name="description" content="منصة الترفيه المعرفي الأولى في قطر — اختبر معرفتك وتحدَّ أصدقاءك في اختبارات عن التراث، الأكل، كأس العالم، ومعالم قطر">
+
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#8A1538">
+<meta name="background-color" content="#F5F1EA">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="ابشر بالجواب">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
+<link rel="icon" type="image/png" sizes="512x512" href="icons/icon-512.png">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&family=Changa:wght@500;600;700;800&display=swap" rel="stylesheet">
+
+<!-- Firebase SDK — required for majlis (multiplayer). See README for setup. -->
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+<style>
+  :root {
+    --maroon: #8A1538;
+    --maroon-dark: #6E102C;
+    --white: #FFFFFF;
+    --sand: #F5F1EA;
+    --gold: #C9A14A;
+    --text-dark: #1A1A1A;
+    --grey-cta-bg: #D9D9D9;
+    --grey-cta-text: #6B6B6B;
+    --green: #1F6B62;
+    --red: #B5562F;
+
+    --font-body: 'IBM Plex Sans Arabic', sans-serif;
+    --font-display: 'Changa', sans-serif;
+
+    --safe-top: env(safe-area-inset-top, 0px);
+    --safe-bottom: env(safe-area-inset-bottom, 0px);
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+
+  html, body {
+    background: #2B2B2B;
+    font-family: var(--font-body);
+    color: var(--text-dark);
+    -webkit-font-smoothing: antialiased;
+    height: 100%;
+    overscroll-behavior: none;
+  }
+
+  button { font-family: inherit; }
+  :focus-visible { outline: 3px solid var(--gold); outline-offset: 2px; }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+  }
+
+  /* ============================================================
+     APP SHELL — fixed mobile-sized frame, app chrome
+  ============================================================= */
+  .app-frame {
+    max-width: 430px;
+    margin: 0 auto;
+    height: 100dvh;
+    background: var(--sand);
+    position: relative;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 0 60px rgba(0,0,0,0.5);
+  }
+  @media (min-width: 431px) {
+    body { display: flex; align-items: center; justify-content: center; }
+    .app-frame { height: min(932px, 100dvh); border-radius: 40px; }
+  }
+
+  .status-spacer { height: var(--safe-top); flex-shrink: 0; background: transparent; position: relative; z-index: 50; }
+  .status-spacer.on-maroon { background: var(--maroon); }
+  .status-spacer.on-white { background: var(--white); }
+
+  .app-scroll {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-y: contain;
+    scrollbar-width: none;
+  }
+  .app-scroll::-webkit-scrollbar { display: none; }
+
+  .screen { display: none; height: 100%; min-height: 0; flex-direction: column; }
+  .screen.active { display: flex; }
+  .screen-static { display: none; }
+  .screen-static.active { display: flex; flex-direction: column; height: 100%; }
+
+  /* simple slide-in transition for screen changes */
+  @keyframes screenIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+  .screen.active, .screen-static.active { animation: screenIn .22s ease; }
+
+  img, svg { display: block; }
+
+  /* ============================================================
+     TOP BAR — slim brand strip, sits above hero on home only
+  ============================================================= */
+  .top-bar {
+    flex-shrink: 0; display: flex; align-items: center; justify-content: space-between;
+    padding: 12px 18px; background: var(--maroon-dark); position: relative; z-index: 45;
+  }
+  .top-bar-logo { height: 22px; display: block; }
+  .top-bar-logo img { height: 100%; width: auto; display: block; }
+  .account-chip {
+    display: flex; align-items: center; gap: 8px; background: rgba(255,255,255,0.12);
+    border: 1px solid rgba(255,255,255,0.2); border-radius: 100px; padding: 5px 12px 5px 5px;
+    cursor: pointer; color: var(--white); font-size: 12.5px; font-weight: 600; font-family: inherit;
+  }
+  .account-chip .avatar-dot { width: 24px; height: 24px; font-size: 11px; }
+  .account-chip-guest { padding: 8px; border-radius: 50%; }
+
+  /* ============================================================
+     PROFILE SETUP (name / nickname / gender, once)
+  ============================================================= */
+  .profile-gender-row { display: flex; gap: 10px; }
+  .gender-option {
+    flex: 1; display: flex; flex-direction: column; align-items: center; gap: 8px;
+    padding: 16px 10px; border-radius: 14px; border: 2px solid #E2DACB; background: var(--white);
+    cursor: pointer; font-family: inherit; transition: all .12s ease;
+  }
+  .gender-option .gender-icon { width: 30px; height: 30px; }
+  .gender-option span { font-size: 13px; font-weight: 600; color: #6B6B6B; }
+  .gender-option.selected { border-color: var(--maroon); background: rgba(138,21,56,0.06); }
+  .gender-option.selected span { color: var(--maroon); }
+
+  /* ============================================================
+     BOTTOM TAB BAR
+  ============================================================= */
+  .tab-bar {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-around;
+    background: var(--white);
+    border-top: 1px solid #ECE5D6;
+    padding: 10px 8px calc(10px + var(--safe-bottom));
+    position: relative;
+    z-index: 40;
+  }
+  .tab-btn {
+    background: none; border: none; display: flex; flex-direction: column; align-items: center;
+    gap: 4px; padding: 6px 14px; color: #B0A99A; font-size: 11px; font-weight: 600;
+    cursor: pointer; font-family: inherit; border-radius: 12px; transition: color .15s ease;
+  }
+  .tab-btn svg { width: 22px; height: 22px; }
+  .tab-btn.active { color: var(--maroon); }
+  .tab-btn .tab-dot { width: 4px; height: 4px; border-radius: 50%; background: var(--maroon); margin-top: -2px; opacity: 0; }
+  .tab-btn.active .tab-dot { opacity: 1; }
+
+  /* ============================================================
+     BUTTONS / INPUTS (shared)
+  ============================================================= */
+  .btn {
+    font-family: var(--font-display); font-weight: 600; font-size: 16px; border: none;
+    border-radius: 14px; padding: 14px 26px; cursor: pointer;
+    transition: transform .12s ease, opacity .12s ease; display: inline-flex;
+    align-items: center; justify-content: center; gap: 8px;
+  }
+  .btn:active { transform: scale(0.97); }
+  .btn:disabled { opacity: 0.45; cursor: not-allowed; transform: none; }
+  .btn-primary { background: var(--maroon); color: var(--white); }
+  .btn-gold { background: var(--gold); color: var(--text-dark); }
+  .btn-outline { background: transparent; color: var(--maroon); border: 2px solid var(--maroon); }
+  .btn-lg { padding: 16px 32px; font-size: 16px; }
+  .btn-block { width: 100%; }
+
+  .input {
+    font-family: var(--font-body); font-size: 16px; padding: 14px 16px; border-radius: 14px;
+    border: 2px solid #E2DACB; background: var(--white); color: var(--text-dark); width: 100%;
+    transition: border-color .15s ease;
+  }
+  .input:focus { border-color: var(--maroon); outline: none; }
+  .input::placeholder { color: #aaa; }
+
+  .toast {
+    position: fixed; bottom: 90px; left: 50%; transform: translateX(-50%);
+    background: var(--text-dark); color: var(--white); padding: 13px 22px; border-radius: 100px;
+    font-size: 13px; font-weight: 500; z-index: 1000; opacity: 0; pointer-events: none;
+    transition: opacity .2s ease, transform .2s ease; display: flex; align-items: center; gap: 8px;
+    max-width: 85%; text-align: center;
+  }
+  .toast.show { opacity: 1; transform: translateX(-50%) translateY(-8px); }
+
+  .install-banner {
+    position: absolute; bottom: 0; left: 0; right: 0; z-index: 999;
+    background: var(--white); box-shadow: 0 -8px 28px rgba(26,26,26,0.12);
+    padding: 14px 16px; padding-bottom: calc(14px + var(--safe-bottom));
+    display: none; align-items: center; gap: 12px;
+    transform: translateY(100%); transition: transform .3s ease;
+  }
+  .install-banner.show { display: flex; transform: translateY(0); }
+  .install-banner-icon { font-size: 22px; flex-shrink: 0; }
+  .install-banner-text { flex: 1; display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+  .install-banner-text strong { font-family: var(--font-display); font-size: 13px; }
+  .install-banner-text span { font-size: 11px; color: #777; }
+  .install-banner .btn { padding: 9px 16px; font-size: 13px; flex-shrink: 0; }
+  .install-banner-dismiss { background: none; border: none; font-size: 15px; color: #aaa; cursor: pointer; padding: 4px; flex-shrink: 0; }
+
+  .error-banner {
+    background: rgba(181,86,47,0.1); border: 1px solid var(--red); color: var(--red);
+    padding: 13px 16px; border-radius: 12px; font-size: 13px; margin-bottom: 18px; display: none;
+  }
+  .error-banner.show { display: block; }
+
+  .spinner {
+    width: 16px; height: 16px; border: 2.5px solid rgba(255,255,255,0.3); border-top-color: var(--white);
+    border-radius: 50%; animation: spin 0.7s linear infinite; display: inline-block;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ============================================================
+     HOME: HERO
+  ============================================================= */
+  .hero { position: relative; background: linear-gradient(160deg, var(--maroon) 0%, var(--maroon-dark) 100%); padding-bottom: 44px; overflow: hidden; }
+  .hero::before {
+    content: ""; position: absolute; inset: 0;
+    background-image: radial-gradient(circle at 85% 8%, rgba(201,161,74,0.22), transparent 45%), radial-gradient(circle at 5% 90%, rgba(255,255,255,0.06), transparent 40%);
+    pointer-events: none;
+  }
+  .hero-top-row { position: relative; display: flex; align-items: center; justify-content: flex-end; padding: 4px 20px 4px; }
+  .hero-logo { font-family: var(--font-display); font-weight: 700; font-size: 20px; color: var(--white); display: flex; gap: 6px; }
+  .hero-logo .dot { color: var(--gold); }
+  .hero-icon-btn {
+    width: 38px; height: 38px; border-radius: 12px; background: rgba(255,255,255,0.14);
+    border: 1px solid rgba(255,255,255,0.2); display: flex; align-items: center; justify-content: center;
+    cursor: pointer;
+  }
+  .hero-content { position: relative; padding: 14px 24px 8px; text-align: center; }
+  .hero-eyebrow {
+    display: inline-flex; align-items: center; gap: 6px; background: rgba(255,255,255,0.1);
+    border: 1px solid rgba(255,255,255,0.2); color: var(--gold); font-size: 12px; font-weight: 600;
+    padding: 6px 14px; border-radius: 100px; margin-bottom: 18px;
+  }
+  .hero-title { font-family: var(--font-display); font-weight: 800; color: var(--white); font-size: 38px; line-height: 1.15; }
+  .hero-title .accent { color: var(--gold); }
+  .hero-tagline { font-size: 14px; color: rgba(255,255,255,0.85); margin: 14px auto 0; line-height: 1.6; max-width: 320px; }
+  .hero-stats { display: flex; justify-content: center; gap: 28px; margin-top: 26px; }
+  .stat { text-align: center; }
+  .stat-num { font-family: var(--font-display); font-size: 24px; font-weight: 700; color: var(--gold); line-height: 1; }
+  .stat-label { font-size: 11px; color: rgba(255,255,255,0.7); margin-top: 6px; font-weight: 500; }
+  .stat-divider { width: 1px; background: rgba(255,255,255,0.2); }
+  .wave { position: absolute; bottom: 0; left: 0; width: 100%; height: 44px; display: block; }
+
+  /* ============================================================
+     HOME: HERO CTA BUTTONS (play solo / join majlis / create majlis)
+  ============================================================= */
+  .hero-cta-row { position: relative; display: flex; flex-direction: column; gap: 10px; padding: 24px 24px 0; }
+  .hero-cta {
+    display: flex; align-items: center; gap: 12px; padding: 15px 18px; border-radius: 16px;
+    border: none; cursor: pointer; font-family: inherit; text-align: right; transition: transform .12s ease;
+    width: 100%;
+  }
+  .hero-cta:active { transform: scale(0.98); }
+  .hero-cta-icon { font-size: 20px; flex-shrink: 0; }
+  .hero-cta-text { flex: 1; display: flex; flex-direction: column; gap: 1px; }
+  .hero-cta-text strong { font-family: var(--font-display); font-size: 15px; }
+  .hero-cta-text span { font-size: 11.5px; opacity: 0.75; }
+  .hero-cta-primary { background: var(--gold); color: var(--text-dark); }
+  .hero-cta-outline { background: rgba(255,255,255,0.1); border: 1.5px solid rgba(255,255,255,0.3); color: var(--white); }
+  .hero-cta-outline .hero-cta-text span { opacity: 0.65; }
+
+  /* ============================================================
+     HOME: CATEGORY CAROUSEL
+  ============================================================= */
+  .cat-carousel-section { padding: 22px 0 6px; }
+  .section-head { display: flex; align-items: center; justify-content: space-between; padding: 0 20px 14px; }
+  .section-head h2 { font-family: var(--font-display); font-size: 19px; font-weight: 700; }
+  .cat-carousel-intro { font-size: 12.5px; color: #777; padding: 0 20px 16px; line-height: 1.6; margin-top: -10px; }
+  .linklike-small { background: none; border: none; color: var(--maroon); font-size: 13px; font-weight: 600; cursor: pointer; font-family: inherit; }
+
+  .cat-carousel-wrap { position: relative; display: flex; align-items: center; justify-content: center; padding: 0 8px; }
+  .cat-arrow {
+    width: 34px; height: 34px; border-radius: 50%; background: var(--white); border: 1px solid #ECE5D6;
+    box-shadow: 0 4px 14px rgba(26,26,26,0.1); display: flex; align-items: center; justify-content: center;
+    cursor: pointer; position: absolute; z-index: 5; transition: transform .12s ease;
+  }
+  .cat-arrow:active { transform: scale(0.92); }
+  .cat-arrow-right { right: 4px; }
+  .cat-arrow-left { left: 4px; }
+  .cat-arrow svg { width: 18px; height: 18px; }
+
+  .cat-carousel-track { display: flex; align-items: center; justify-content: center; width: 100%; padding: 0 46px; min-height: 240px; }
+  .cat-card-main {
+    width: 100%; max-width: 240px; border-radius: 26px; padding: 26px 22px; text-align: center;
+    display: flex; flex-direction: column; align-items: center; gap: 14px; border: none; cursor: pointer;
+    box-shadow: 0 14px 32px rgba(26,26,26,0.14); transition: transform .15s ease;
+  }
+  .cat-card-main:active { transform: scale(0.97); }
+  .cat-card-icon { width: 72px; height: 72px; }
+  .cat-card-icon svg { width: 100%; height: 100%; }
+  .cat-card-name { font-family: var(--font-display); font-size: 21px; font-weight: 700; color: var(--white); }
+  .cat-card-sub { font-size: 12px; color: rgba(255,255,255,0.7); margin-top: -8px; }
+  .cat-card-desc { font-size: 12.5px; color: rgba(255,255,255,0.85); line-height: 1.5; }
+  .cat-card-cta {
+    margin-top: 4px; background: rgba(255,255,255,0.2); color: var(--white); font-size: 13px;
+    font-weight: 600; padding: 9px 22px; border-radius: 100px; font-family: var(--font-display);
+  }
+  .cat-dots { display: flex; justify-content: center; gap: 6px; margin-top: 16px; }
+  .cat-dots .dot { width: 6px; height: 6px; border-radius: 50%; background: #E2DACB; transition: all .2s ease; }
+  .cat-dots .dot.active { background: var(--maroon); width: 18px; border-radius: 4px; }
+
+  .card--maroon { background: var(--maroon); }
+  .card--gold { background: var(--gold); }
+  .card--gold .cat-card-name, .card--gold .cat-card-sub { color: var(--text-dark); }
+  .card--gold .cat-card-sub { opacity: 0.65; }
+  .card--gold .cat-card-cta { background: rgba(26,26,26,0.12); color: var(--text-dark); }
+  .card--ink { background: var(--text-dark); }
+  .card--terracotta { background: #B5562F; }
+  .card--teal { background: #1F6B62; }
+  .card--plum { background: #5C3661; }
+
+  /* ============================================================
+     HOME: QUICK ACTIONS
+  ============================================================= */
+  .quick-actions { display: flex; gap: 12px; padding: 22px 20px 6px; }
+  .quick-action-card {
+    flex: 1; background: var(--white); border: 1px solid #ECE5D6; border-radius: 18px; padding: 16px 14px;
+    display: flex; flex-direction: column; align-items: flex-start; gap: 10px; cursor: pointer;
+    box-shadow: 0 4px 14px rgba(26,26,26,0.05); transition: transform .12s ease;
+  }
+  .quick-action-card:active { transform: scale(0.97); }
+  .qa-icon { font-size: 26px; }
+  .qa-text { display: flex; flex-direction: column; gap: 2px; text-align: right; }
+  .qa-text strong { font-family: var(--font-display); font-size: 14px; }
+  .qa-text span { font-size: 11.5px; color: #888; line-height: 1.4; }
+  .qa-majlis .qa-text strong { color: var(--maroon); }
+
+  /* ============================================================
+     HOME: FULL CATEGORY LIST WITH DESCRIPTIONS
+  ============================================================= */
+  .cat-full-section { padding: 30px 0 6px; }
+  .cat-desc-list { display: flex; flex-direction: column; gap: 10px; padding: 0 20px; }
+  .cat-desc-card {
+    display: flex; align-items: center; gap: 14px; padding: 14px 16px; border-radius: 16px;
+    background: var(--white); border: 1px solid #ECE5D6; cursor: pointer; text-align: right;
+    font-family: inherit; box-shadow: 0 4px 14px rgba(26,26,26,0.04); transition: transform .12s ease;
+  }
+  .cat-desc-card:active { transform: scale(0.98); }
+  .cat-desc-icon-wrap { flex-shrink: 0; width: 46px; height: 46px; border-radius: 13px; display: flex; align-items: center; justify-content: center; padding: 9px; }
+  .cat-desc-icon-wrap svg { width: 100%; height: 100%; }
+  .cat-desc-body { flex: 1; min-width: 0; }
+  .cat-desc-body strong { font-family: var(--font-display); font-size: 14.5px; display: block; margin-bottom: 2px; }
+  .cat-desc-body p { font-size: 12px; color: #888; line-height: 1.5; }
+  .cat-desc-arrow { color: #ccc; font-size: 18px; flex-shrink: 0; }
+
+  /* ============================================================
+     HOME: HOW TO PLAY CARDS
+  ============================================================= */
+  .howto-card { background: var(--white); border-radius: 18px; padding: 20px 18px; margin: 18px 0; box-shadow: 0 4px 14px rgba(26,26,26,0.05); }
+  .howto-title { font-family: var(--font-display); font-size: 15px; font-weight: 700; margin-bottom: 14px; color: var(--maroon); }
+  .howto-steps { display: flex; flex-direction: column; gap: 11px; list-style: none; }
+  .howto-steps li { display: flex; align-items: flex-start; gap: 10px; font-size: 13px; color: #4a4a4a; line-height: 1.6; }
+  .howto-num {
+    flex-shrink: 0; width: 22px; height: 22px; border-radius: 50%; background: var(--sand); color: var(--maroon);
+    font-family: var(--font-display); font-weight: 700; font-size: 11.5px; display: flex; align-items: center; justify-content: center;
+  }
+
+
+  .about-section { padding: 36px 20px 8px; }
+  .about-section .kicker { font-size: 12px; font-weight: 600; color: var(--maroon); margin-bottom: 8px; }
+  .about-section h2 { font-family: var(--font-display); font-size: 23px; font-weight: 800; line-height: 1.3; margin-bottom: 12px; }
+  .about-section > p { font-size: 14px; line-height: 1.8; color: #4a4a4a; margin-bottom: 22px; }
+  .about-points { display: flex; flex-direction: column; gap: 18px; }
+  .about-point { display: flex; gap: 14px; align-items: flex-start; }
+  .about-point-icon { flex: 0 0 44px; width: 44px; height: 44px; border-radius: 12px; background: var(--white); border: 1px solid #ECE5D6; display: flex; align-items: center; justify-content: center; font-size: 19px; }
+  .about-point h3 { font-family: var(--font-display); font-size: 14.5px; font-weight: 700; margin-bottom: 2px; }
+  .about-point p { font-size: 12.5px; color: #6a6a6a; line-height: 1.5; }
+
+  /* ============================================================
+     FOOTER (home)
+  ============================================================= */
+  .site-footer { background: var(--text-dark); padding: 36px 20px 24px; margin-top: 36px; }
+  .footer-brand p { font-size: 12.5px; color: rgba(255,255,255,0.5); margin-top: 8px; }
+  .footer-links-row { display: flex; gap: 18px; margin-top: 20px; flex-wrap: wrap; }
+  .footer-links-row a { color: rgba(255,255,255,0.65); text-decoration: none; font-size: 13px; }
+  .footer-bottom { display: flex; justify-content: space-between; margin-top: 24px; padding-top: 18px; border-top: 1px solid rgba(255,255,255,0.1); font-size: 11px; color: rgba(255,255,255,0.4); }
+
+  /* ============================================================
+     APP HEADER (explore tab + generic)
+  ============================================================= */
+  .app-header { padding: 20px 20px 6px; }
+  .app-header h1 { font-family: var(--font-display); font-size: 24px; font-weight: 800; }
+  .app-header p { font-size: 13px; color: #888; margin-top: 4px; }
+
+  .explore-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; padding: 16px 20px 0; }
+  .explore-card {
+    border-radius: 20px; padding: 18px 14px; min-height: 150px; display: flex; flex-direction: column;
+    justify-content: space-between; border: none; cursor: pointer; text-align: right;
+  }
+  .explore-card .cat-card-icon { width: 36px; height: 36px; }
+  .explore-card .explore-name { font-family: var(--font-display); font-size: 15px; font-weight: 700; color: var(--white); margin-top: 10px; }
+  .explore-card .explore-sub { font-size: 10.5px; color: rgba(255,255,255,0.65); margin-top: 2px; }
+  .explore-card.card--gold .explore-name, .explore-card.card--gold .explore-sub { color: var(--text-dark); }
+  .explore-card.card--gold .explore-sub { opacity: 0.6; }
+
+  /* ============================================================
+     PLAY MODE PICKER
+  ============================================================= */
+  .page { padding: 20px 20px 100px; }
+  .page-back { display: inline-flex; align-items: center; gap: 6px; background: none; border: none; color: var(--maroon); font-weight: 600; font-size: 13px; cursor: pointer; margin-bottom: 20px; font-family: inherit; padding: 0; }
+  .page-head { margin-bottom: 24px; }
+  .page-head .kicker { font-size: 12px; font-weight: 600; color: var(--maroon); margin-bottom: 8px; }
+  .page-head h2 { font-family: var(--font-display); font-size: 22px; font-weight: 800; line-height: 1.3; }
+  .page-head p { font-size: 13px; color: #888; margin-top: 6px; line-height: 1.6; }
+
+  .field { display: flex; flex-direction: column; gap: 8px; margin-bottom: 18px; }
+  .field label { font-size: 13px; font-weight: 600; color: #555; }
+  .play-mode-head { text-align: center; margin-bottom: 28px; }
+  .play-mode-head .pm-icon { width: 64px; height: 64px; margin: 0 auto 14px; }
+  .play-mode-head .pm-icon svg { width: 100%; height: 100%; }
+  .play-mode-head h2 { font-family: var(--font-display); font-size: 22px; font-weight: 800; }
+  .play-mode-head p { font-size: 13px; color: #888; margin-top: 6px; }
+
+  .mode-options { display: flex; flex-direction: column; gap: 12px; }
+  .mode-card {
+    display: flex; align-items: center; gap: 14px; background: var(--white); border: 1.5px solid #ECE5D6;
+    border-radius: 18px; padding: 16px; cursor: pointer; text-align: right; transition: transform .12s ease, border-color .12s ease;
+  }
+  .mode-card:active { transform: scale(0.98); }
+  .mode-card-featured { border-color: var(--gold); background: linear-gradient(135deg, rgba(201,161,74,0.08), rgba(255,255,255,0)); }
+  .mode-icon { font-size: 26px; flex-shrink: 0; }
+  .mode-text { flex: 1; display: flex; flex-direction: column; gap: 2px; }
+  .mode-text strong { font-family: var(--font-display); font-size: 15px; }
+  .mode-text span { font-size: 12px; color: #888; }
+  .mode-arrow { font-size: 20px; color: #ccc; }
+
+  /* ============================================================
+     QUIZ PLAYER
+  ============================================================= */
+  .quiz-top-bar {
+    flex-shrink: 0; display: flex; align-items: center; justify-content: space-between;
+    padding: 12px 16px; background: var(--white); border-bottom: 1px solid #F0EBDF;
+  }
+  .icon-back-btn { width: 36px; height: 36px; border-radius: 10px; background: var(--sand); border: none; display: flex; align-items: center; justify-content: center; cursor: pointer; }
+  .quiz-progress-label { font-size: 13px; font-weight: 600; color: #6B6B6B; }
+  .quiz-score-pill { background: var(--maroon); color: var(--white); font-family: var(--font-display); font-weight: 700; font-size: 13px; padding: 6px 14px; border-radius: 100px; }
+
+  .quiz-wrap { padding: 16px 18px 24px; }
+  .progress-track { height: 7px; background: #E4DECF; border-radius: 100px; overflow: hidden; margin-bottom: 18px; }
+  .progress-fill { height: 100%; background: var(--gold); border-radius: 100px; transition: width .3s ease; }
+
+  .streak-row {
+    display: flex; align-items: center; gap: 8px; background: linear-gradient(90deg, rgba(201,161,74,0.18), rgba(201,161,74,0.05));
+    border: 1px solid rgba(201,161,74,0.3); border-radius: 12px; padding: 10px 14px; margin-bottom: 14px;
+    font-size: 13px; font-weight: 600; color: #8a6d28;
+  }
+  .streak-flame { font-size: 16px; }
+
+  .lifelines { display: flex; gap: 8px; margin-bottom: 16px; }
+  .lifeline-btn {
+    display: flex; align-items: center; gap: 6px; padding: 9px 14px; border-radius: 100px;
+    border: 1.5px solid var(--gold); background: rgba(201,161,74,0.1); color: var(--maroon);
+    font-size: 12px; font-weight: 600; cursor: pointer; font-family: inherit;
+  }
+  .lifeline-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  .question-card { background: var(--white); border-radius: 20px; padding: 24px 20px; box-shadow: 0 6px 22px rgba(26,26,26,0.06); }
+  .question-cat { font-size: 12px; font-weight: 600; color: var(--maroon); margin-bottom: 10px; }
+  .question-text { font-family: var(--font-display); font-size: 20px; font-weight: 700; line-height: 1.4; margin-bottom: 22px; }
+
+  .choices { display: grid; gap: 10px; }
+  .choice {
+    text-align: right; padding: 14px 16px; border-radius: 14px; border: 1.5px solid #E2DACB;
+    background: var(--white); font-size: 14.5px; font-weight: 500; cursor: pointer;
+    transition: all .12s ease; display: flex; align-items: center; justify-content: space-between; font-family: inherit;
+  }
+  .choice:active:not(:disabled) { transform: scale(0.98); }
+  .choice:disabled { cursor: default; }
+  .choice .choice-letter { width: 24px; height: 24px; border-radius: 50%; background: #F0EBDF; color: #6B6B6B; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; flex-shrink: 0; }
+  .choice-row { display: flex; align-items: center; gap: 12px; }
+  .choice.correct { border-color: var(--green); background: rgba(31,107,98,0.08); }
+  .choice.correct .choice-letter { background: var(--green); color: var(--white); }
+  .choice.wrong { border-color: var(--red); background: rgba(181,86,47,0.08); }
+  .choice.wrong .choice-letter { background: var(--red); color: var(--white); }
+
+  .quiz-footer-bar { flex-shrink: 0; padding: 12px 18px calc(12px + var(--safe-bottom)); background: var(--white); border-top: 1px solid #F0EBDF; }
+
+  /* ============================================================
+     RESULTS / LEADERBOARD
+  ============================================================= */
+  .results-hero { text-align: center; padding: 24px 20px; }
+  .results-score { font-family: var(--font-display); font-size: 56px; font-weight: 800; color: var(--maroon); line-height: 1; }
+  .results-score span { font-size: 22px; color: #999; font-weight: 600; }
+  .results-label { font-size: 14px; color: #666; margin-top: 8px; }
+  .results-actions { display: flex; gap: 10px; margin-top: 26px; flex-wrap: wrap; justify-content: center; }
+  .panel { background: var(--white); border-radius: 22px; padding: 28px 22px; box-shadow: 0 6px 22px rgba(26,26,26,0.06); }
+
+  .leaderboard-hero { background: linear-gradient(160deg, var(--maroon), var(--maroon-dark)); padding: 28px 20px 50px; text-align: center; }
+  .leaderboard-emoji { font-size: 44px; margin-bottom: 8px; }
+  .leaderboard-hero h2 { font-family: var(--font-display); font-size: 21px; font-weight: 800; color: var(--white); }
+  .leaderboard-row { display: flex; align-items: center; gap: 12px; padding: 14px 16px; background: var(--white); border-radius: 16px; margin-bottom: 10px; box-shadow: 0 4px 14px rgba(26,26,26,0.06); margin-top: -28px; position: relative; z-index: 2; }
+  .leaderboard-row:not(:first-child) { margin-top: 10px; }
+  .leaderboard-rank { font-family: var(--font-display); font-weight: 800; font-size: 16px; color: #999; width: 22px; }
+  .leaderboard-row.first .leaderboard-rank { color: var(--gold); }
+  .leaderboard-row.first { border: 2px solid var(--gold); }
+
+  /* ============================================================
+     ROOM / LOBBY
+  ============================================================= */
+  .room-code-display { text-align: center; background: var(--maroon); border-radius: 18px; padding: 26px; color: var(--white); margin-bottom: 22px; }
+  .room-code-display .label { font-size: 12px; opacity: 0.75; margin-bottom: 8px; }
+  .room-code-display .code { font-family: var(--font-display); font-size: 40px; font-weight: 800; letter-spacing: 7px; color: var(--gold); }
+  .room-code-display .copy-btn { margin-top: 14px; background: rgba(255,255,255,0.15); border: 1px solid rgba(255,255,255,0.3); color: var(--white); padding: 7px 16px; border-radius: 100px; font-size: 12px; cursor: pointer; font-family: inherit; }
+
+  .player-list { display: flex; flex-direction: column; gap: 8px; margin: 18px 0; }
+  .player-row { display: flex; align-items: center; justify-content: space-between; padding: 12px 14px; background: var(--sand); border-radius: 12px; }
+  .player-row .pname { display: flex; align-items: center; gap: 9px; font-weight: 600; font-size: 14px; }
+  .avatar-dot { width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: var(--white); font-family: var(--font-display); font-weight: 700; font-size: 12px; flex-shrink: 0; }
+  .host-badge { font-size: 10px; background: var(--gold); color: var(--text-dark); padding: 2px 8px; border-radius: 100px; font-weight: 700; }
+
+  .waiting-row { display: flex; align-items: center; gap: 9px; color: #999; font-size: 13px; padding: 12px 14px; }
+  .pulse-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--gold); animation: pulse 1.4s ease-in-out infinite; }
+  @keyframes pulse { 0%,100% { opacity: 0.3; } 50% { opacity: 1; } }
+</style>
+</head>
+<body>
+<div class="app-frame" id="app-frame">
+
+  <div id="toast" class="toast"></div>
+  <div id="install-banner" class="install-banner">
+    <span class="install-banner-icon">📲</span>
+    <div class="install-banner-text">
+      <strong>حمّل ابشر بالجواب</strong>
+      <span>ثبّتها على شاشتك وخلّيها بايدك دايم</span>
+    </div>
+    <button class="btn btn-gold" id="install-banner-btn" onclick="installApp()">تثبيت</button>
+    <button class="install-banner-dismiss" onclick="dismissInstallBanner()" aria-label="إغلاق">✕</button>
+  </div>
+
+  <div class="top-bar" id="top-bar">
+    <div class="top-bar-logo"><img src="icons/wordmark.png" alt="ابشر بالجواب"></div>
+    <button class="account-chip" id="account-chip" onclick="openAccount()" aria-label="حسابي"></button>
+  </div>
+
+  <!-- ============================================================
+       SCREEN: HOME
+  ============================================================= -->
+  <section class="screen-static active" id="screen-home">
+    <div class="status-spacer on-maroon"></div>
+    <div class="app-scroll">
+      <div class="hero">
+        <div class="hero-top-row">
+          <button class="hero-icon-btn" onclick="openCreateRoom()" aria-label="إنشاء لعبة">
+            <svg viewBox="0 0 24 24" fill="none"><path d="M12 5 V19 M5 12 H19" stroke="#FFFFFF" stroke-width="2.2" stroke-linecap="round"/></svg>
+          </button>
+        </div>
+
+        <div class="hero-content">
+          <div class="hero-eyebrow">✦ يلا نشوف وش تعرف عن قطر</div>
+          <h1 class="hero-title">شطورك <span class="accent">بقطر؟</span></h1>
+          <p class="hero-tagline">تراث، أكل، لهجة، ومعالم — جرب نفسك بأكثر من تصنيف، ولا تنسى تسحب أصدقائك معاك</p>
+          <div class="hero-stats">
+            <div class="stat"><div class="stat-num">٦</div><div class="stat-label">تصنيفات</div></div>
+            <div class="stat-divider"></div>
+            <div class="stat"><div class="stat-num">٣٠٠+</div><div class="stat-label">سؤال</div></div>
+            <div class="stat-divider"></div>
+            <div class="stat"><div class="stat-num">٣</div><div class="stat-label">وسايل مساعدة</div></div>
+          </div>
+        </div>
+
+        <div class="hero-cta-row">
+          <button class="hero-cta hero-cta-primary" onclick="quickPlaySolo()">
+            <span class="hero-cta-icon">🙋</span>
+            <span class="hero-cta-text">
+              <strong>العب لحالك</strong>
+              <span>اختر تصنيف وابدأ على طول</span>
+            </span>
+          </button>
+          <button class="hero-cta hero-cta-outline" onclick="openCreateRoom()">
+            <span class="hero-cta-icon">🏛️</span>
+            <span class="hero-cta-text">
+              <strong>سوّي مجلس</strong>
+              <span>اعزم ربعك وتنافسوا لايف</span>
+            </span>
+          </button>
+          <button class="hero-cta hero-cta-outline" onclick="openJoinRoom()">
+            <span class="hero-cta-icon">🔑</span>
+            <span class="hero-cta-text">
+              <strong>انضم لمجلس</strong>
+              <span>عندك كود من صاحبك؟ يلا</span>
+            </span>
+          </button>
+        </div>
+
+        <svg class="wave" viewBox="0 0 430 70" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M0,24 C72,60 144,0 215,24 C286,48 358,0 430,24 L430,70 L0,70 Z" fill="#F5F1EA"/>
+        </svg>
+      </div>
+
+      <!-- CATEGORY CAROUSEL -->
+      <div class="cat-carousel-section">
+        <div class="section-head">
+          <h2>وش يشدّك اليوم؟</h2>
+          <button class="linklike-small" onclick="switchTab('explore')">شوف الكل</button>
+        </div>
+        <p class="cat-carousel-intro">٦ تصنيفات تغطي تراثنا وحياتنا اليومية — مرّر يمين ويسار وشوف وش يعجبك</p>
+
+        <div class="cat-carousel-wrap">
+          <button class="cat-arrow cat-arrow-right" onclick="homeCarouselMove(1)" aria-label="التالي">
+            <svg viewBox="0 0 24 24" fill="none"><path d="M15 6 L9 12 L15 18" stroke="#8A1538" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
+          <div class="cat-carousel-track" id="home-cat-track"></div>
+          <button class="cat-arrow cat-arrow-left" onclick="homeCarouselMove(-1)" aria-label="السابق">
+            <svg viewBox="0 0 24 24" fill="none"><path d="M9 6 L15 12 L9 18" stroke="#8A1538" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
+        </div>
+        <div class="cat-dots" id="home-cat-dots"></div>
+      </div>
+
+      <!-- ALL CATEGORIES WITH DESCRIPTIONS -->
+      <div class="cat-full-section">
+        <div class="section-head">
+          <h2>كل التصنيفات</h2>
+        </div>
+        <p class="cat-carousel-intro">كل تصنيف فيه ١٠ أسئلة، نختار منها ٥ أو ١٠ كل ما لعبت</p>
+        <div class="cat-desc-list" id="home-cat-desc-list"></div>
+      </div>
+
+      <!-- ABOUT / HOW TO PLAY -->
+      <div class="about-section">
+        <div class="kicker">عن التطبيق</div>
+        <h2>وش هو ابشر بالجواب؟</h2>
+        <p>ابشر بالجواب منصة أسئلة وأجوبة عن قطر — تراثها، أكلها، لهجتها، ومعالمها. تقدر تلعب لحالك تختبر معلوماتك، أو تسوي "مجلس" وتعزم ربعك يلعبون وياك لايف، كل واحد من جواله بنفس الوقت. كل سؤال نكتبه نتعلم منه شي عن قطر، حتى لو إنت قطري أصلي 😏</p>
+
+        <div class="howto-card">
+          <h3 class="howto-title">طريقة اللعب — لحالك</h3>
+          <ol class="howto-steps">
+            <li><span class="howto-num">١</span> اختر تصنيف يشدّك من الستة</li>
+            <li><span class="howto-num">٢</span> جاوب على ٥ أسئلة، عندك وسيلتين مساعدة (احذف اثنين، تخطّى)</li>
+            <li><span class="howto-num">٣</span> حافظ على سلسلة إجابات صح عشان تطلع نتيجتك أعلى</li>
+            <li><span class="howto-num">٤</span> شوف نتيجتك النهائية وجرب مرة ثانية أو غيّر التصنيف</li>
+          </ol>
+        </div>
+
+        <div class="howto-card">
+          <h3 class="howto-title">طريقة اللعب — مجلس مع ربعك</h3>
+          <ol class="howto-steps">
+            <li><span class="howto-num">١</span> سوّي مجلس، اختر التصنيف وعدد الأسئلة</li>
+            <li><span class="howto-num">٢</span> شارك الكود اللي طلع لك (٤ خانات) وياهم</li>
+            <li><span class="howto-num">٣</span> كل واحد ينضم من جواله، وأنت كصاحب المجلس تبدأ اللعب</li>
+            <li><span class="howto-num">٤</span> الكل يجاوب بنفس الوقت، وفي الآخر تطلع لوحة المتصدرين</li>
+          </ol>
+        </div>
+
+        <div class="about-points">
+          <div class="about-point">
+            <div class="about-point-icon">🎯</div>
+            <div><h3>٦ تصنيفات</h3><p>من التراث للهجة الدارجة</p></div>
+          </div>
+          <div class="about-point">
+            <div class="about-point-icon">👥</div>
+            <div><h3>مجالس لايف</h3><p>كل واحد يلعب من جواله بنفس الوقت</p></div>
+          </div>
+          <div class="about-point">
+            <div class="about-point-icon">🔥</div>
+            <div><h3>ستريك ووسايل مساعدة</h3><p>حافظ على سلسلة إجاباتك الصح</p></div>
+          </div>
+        </div>
+      </div>
+
+      <footer class="site-footer">
+        <div class="footer-brand">
+          <div class="top-bar-logo" style="height:20px;"><img src="icons/wordmark.png" alt="ابشر بالجواب" style="height:100%;filter:brightness(0) invert(1);"></div>
+          <p>منصة الترفيه المعرفي الأولى في قطر</p>
+        </div>
+        <div class="footer-links-row">
+          <a href="#" onclick="openCreateRoom();return false;">سوّي مجلس</a>
+          <a href="#" onclick="openJoinRoom();return false;">انضم لمجلس</a>
+          <a href="mailto:hello@absherbiljawab.qa">راسلنا</a>
+        </div>
+        <div class="footer-bottom">
+          <span>© ٢٠٢٦ ابشر بالجواب</span>
+          <span>صُنع بفخر في الدوحة 🇶🇦</span>
+        </div>
+      </footer>
+    </div>
+  </section>
+
+  <!-- ============================================================
+       SCREEN: EXPLORE (full category list, tab)
+  ============================================================= -->
+  <section class="screen-static" id="screen-explore">
+    <div class="status-spacer on-white"></div>
+    <div class="app-header">
+      <h1>كل التصنيفات</h1>
+      <p>اختر وش يشدّك وابدأ على طول</p>
+    </div>
+    <div class="app-scroll">
+      <div class="explore-grid" id="explore-grid"></div>
+      <div style="height:24px;"></div>
+    </div>
+  </section>
+
+  <!-- ============================================================
+       SCREEN: PLAY MODE PICKER (solo / friends / majlis)
+  ============================================================= -->
+  <section class="screen" id="screen-play-mode">
+    <div class="status-spacer on-white"></div>
+    <div class="app-scroll">
+      <div class="page">
+        <button class="page-back" onclick="backFromPlayMode()">→ رجوع</button>
+        <div class="play-mode-head" id="play-mode-head"></div>
+
+        <div class="mode-options">
+          <button class="mode-card" onclick="startSoloQuizFromPicker()">
+            <span class="mode-icon">🙋</span>
+            <span class="mode-text">
+              <strong>العب لحالك</strong>
+              <span>اختبر نفسك بسرعة، بدون ضغط</span>
+            </span>
+            <span class="mode-arrow">‹</span>
+          </button>
+          <button class="mode-card" onclick="openJoinRoomFromPicker()">
+            <span class="mode-icon">🔑</span>
+            <span class="mode-text">
+              <strong>انضم لمجلس صاحبك</strong>
+              <span>عندك كود؟ ادخل والعب وياهم</span>
+            </span>
+            <span class="mode-arrow">‹</span>
+          </button>
+          <button class="mode-card mode-card-featured" onclick="openCreateRoomFromPicker()">
+            <span class="mode-icon">🏛️</span>
+            <span class="mode-text">
+              <strong>سوّي مجلس</strong>
+              <span>اعزم ربعك وتنافسوا لايف</span>
+            </span>
+            <span class="mode-arrow">‹</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================
+       SCREEN: SOLO QUIZ PLAYER
+  ============================================================= -->
+  <section class="screen" id="screen-quiz">
+    <div class="status-spacer on-white"></div>
+    <div class="quiz-top-bar">
+      <button class="icon-back-btn" onclick="confirmLeaveQuiz()" aria-label="رجوع">
+        <svg viewBox="0 0 24 24" fill="none"><path d="M15 6 L9 12 L15 18" stroke="#1A1A1A" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+      <span class="quiz-progress-label" id="quiz-progress-label">السؤال ١ من ٥</span>
+      <span class="quiz-score-pill" id="quiz-score-pill">٠ نقطة</span>
+    </div>
+    <div class="app-scroll">
+      <div class="quiz-wrap">
+        <div class="progress-track"><div class="progress-fill" id="quiz-progress-fill" style="width:20%"></div></div>
+
+        <div class="streak-row" id="quiz-streak-row" style="display:none;">
+          <span class="streak-flame">🔥</span>
+          <span id="quiz-streak-text">سلسلة ٣ صح ورا بعض!</span>
+        </div>
+
+        <div class="lifelines">
+          <button class="lifeline-btn" id="lifeline-5050" onclick="useLifeline5050()">✂️ احذف اثنين</button>
+          <button class="lifeline-btn" id="lifeline-skip" onclick="useLifelineSkip()">⏭️ تخطّى</button>
+        </div>
+
+        <div class="question-card">
+          <div class="question-cat" id="quiz-cat-label">التراث</div>
+          <div class="question-text" id="quiz-question-text">سؤال تجريبي</div>
+          <div class="choices" id="quiz-choices"></div>
+        </div>
+      </div>
+    </div>
+    <div class="quiz-footer-bar">
+      <button class="btn btn-primary btn-block btn-lg" id="quiz-next-btn" onclick="quizNext()" disabled>السؤال اللي بعده</button>
+    </div>
+  </section>
+
+  <!-- ============================================================
+       SCREEN: SOLO RESULTS
+  ============================================================= -->
+  <section class="screen" id="screen-results">
+    <div class="status-spacer on-white"></div>
+    <div class="app-scroll">
+      <div class="page">
+        <div class="panel results-hero">
+          <div style="font-size:48px;margin-bottom:8px;" id="results-emoji">🏆</div>
+          <div class="results-score"><span id="results-score">٠</span><span> / <span id="results-total">٥</span></span></div>
+          <div class="results-label" id="results-label">يا سلام عليك!</div>
+          <div class="results-actions">
+            <button class="btn btn-primary" onclick="retrySoloQuiz()">جرب مرة ثانية</button>
+            <button class="btn btn-outline" onclick="go('home')">تصنيف ثاني</button>
+            <button class="btn btn-gold" onclick="openCreateRoomFromResults()">حدّي ربعك</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================
+       SCREEN: CREATE A MAJLIS
+  ============================================================= -->
+  <section class="screen" id="screen-create-room">
+    <div class="status-spacer on-white"></div>
+    <div class="app-scroll">
+      <div class="page">
+        <button class="page-back" onclick="goBackFromCreate()">→ رجوع</button>
+        <div class="page-head">
+          <div class="kicker">🏛️ سوّي مجلس</div>
+          <h2>اعزم ربعك ع التحدي</h2>
+          <p>اختر التصنيف، وكوننا بنطلع لك كود تشاركه وياهم. كل واحد يلعب من جواله</p>
+        </div>
+        <div class="panel">
+          <div class="error-banner" id="create-room-error"></div>
+          <div class="field">
+            <label for="create-room-name">شو اسمك؟</label>
+            <input class="input" id="create-room-name" placeholder="مثلاً: أحمد" maxlength="20">
+          </div>
+          <div class="field">
+            <label for="create-room-cat">اختر التصنيف</label>
+            <select class="input" id="create-room-cat" style="appearance:auto;"></select>
+          </div>
+          <div class="field">
+            <label for="create-room-qcount">كم سؤال؟</label>
+            <select class="input" id="create-room-qcount" style="appearance:auto;">
+              <option value="5">٥ أسئلة</option>
+              <option value="10">١٠ أسئلة</option>
+            </select>
+          </div>
+          <button class="btn btn-primary btn-block btn-lg" id="create-room-submit" onclick="submitCreateRoom()">سوّي المجلس</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================
+       SCREEN: JOIN A MAJLIS
+  ============================================================= -->
+  <section class="screen" id="screen-join-room">
+    <div class="status-spacer on-white"></div>
+    <div class="app-scroll">
+      <div class="page">
+        <button class="page-back" onclick="goBackFromJoin()">→ رجوع</button>
+        <div class="page-head">
+          <div class="kicker">🔑 يلا انضم</div>
+          <h2>عندك كود مجلس؟</h2>
+          <p>اطلب من صاحبك الكود اللي طلع له، ٤ خانات بس</p>
+        </div>
+        <div class="panel">
+          <div class="error-banner" id="join-room-error"></div>
+          <div class="field">
+            <label for="join-room-code">كود المجلس</label>
+            <input class="input" id="join-room-code" placeholder="مثلاً: A4F9" maxlength="4" style="text-align:center;font-family:var(--font-display);font-size:24px;letter-spacing:6px;text-transform:uppercase;">
+          </div>
+          <div class="field">
+            <label for="join-room-name">شو اسمك؟</label>
+            <input class="input" id="join-room-name" placeholder="مثلاً: سارة" maxlength="20">
+          </div>
+          <button class="btn btn-primary btn-block btn-lg" id="join-room-submit" onclick="submitJoinRoom()">يلا انضم</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================
+       SCREEN: MAJLIS LOBBY
+  ============================================================= -->
+  <section class="screen" id="screen-lobby">
+    <div class="status-spacer on-white"></div>
+    <div class="app-scroll">
+      <div class="page">
+        <button class="page-back" onclick="confirmLeaveRoom()">→ طلّع من المجلس</button>
+        <div class="room-code-display">
+          <div class="label">شارك هذا الكود وياهم</div>
+          <div class="code" id="lobby-code">----</div>
+          <button class="copy-btn" onclick="copyRoomCode()">نسخ الكود</button>
+        </div>
+
+        <div class="panel">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">
+            <h3 style="font-family:var(--font-display);font-size:18px;">أهل المجلس</h3>
+            <span style="font-size:13px;color:#999;" id="lobby-cat-info"></span>
+          </div>
+          <div class="player-list" id="lobby-player-list"></div>
+          <div id="lobby-host-controls"></div>
+          <div id="lobby-guest-waiting" style="display:none;">
+            <div class="waiting-row"><span class="pulse-dot"></span> ننتظر صاحب المجلس يبدأ...</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================
+       SCREEN: ROOM QUIZ (live, multi-device)
+  ============================================================= -->
+  <section class="screen" id="screen-room-quiz">
+    <div class="status-spacer on-white"></div>
+    <div class="quiz-top-bar">
+      <button class="icon-back-btn" onclick="confirmLeaveRoom()" aria-label="رجوع">
+        <svg viewBox="0 0 24 24" fill="none"><path d="M15 6 L9 12 L15 18" stroke="#1A1A1A" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+      <span class="quiz-progress-label" id="room-quiz-progress-label">السؤال ١ من ٥</span>
+      <span class="quiz-score-pill" id="room-quiz-score-pill">٠ نقطة</span>
+    </div>
+    <div class="app-scroll">
+      <div class="quiz-wrap">
+        <div class="progress-track"><div class="progress-fill" id="room-quiz-progress-fill" style="width:20%"></div></div>
+
+        <div class="question-card">
+          <div class="question-cat" id="room-quiz-cat-label">التراث</div>
+          <div class="question-text" id="room-quiz-question-text">سؤال تجريبي</div>
+          <div class="choices" id="room-quiz-choices"></div>
+        </div>
+
+        <div class="panel" style="margin-top:18px;">
+          <h3 style="font-family:var(--font-display);font-size:14px;margin-bottom:12px;color:#666;">وين وصلوا؟</h3>
+          <div id="room-quiz-player-status"></div>
+        </div>
+      </div>
+    </div>
+    <div class="quiz-footer-bar" id="room-quiz-host-footer"></div>
+  </section>
+
+  <!-- ============================================================
+       SCREEN: ROOM RESULTS / LEADERBOARD
+  ============================================================= -->
+  <section class="screen" id="screen-room-results">
+    <div class="status-spacer on-maroon"></div>
+    <div class="app-scroll">
+      <div class="leaderboard-hero">
+        <div class="leaderboard-emoji">🏆</div>
+        <h2>خلصت! وش طلعت النتيجة؟</h2>
+      </div>
+      <div class="page" style="padding-top:0;">
+        <div id="room-leaderboard"></div>
+        <div class="results-actions">
+          <button class="btn btn-primary btn-block" onclick="go('home')">رجوع للرئيسية</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================
+       SCREEN: PROFILE SETUP (name / nickname / gender — shown once)
+  ============================================================= -->
+  <section class="screen" id="screen-profile-setup">
+    <div class="status-spacer on-white"></div>
+    <div class="app-scroll">
+      <div class="page">
+        <div class="page-head">
+          <div class="kicker">👋 هلا فيك</div>
+          <h2>قبل لا نبدأ، عرّفنا عليك</h2>
+          <p>بس عشان نظهر اسمك بالمجالس ولوحة المتصدرين</p>
+        </div>
+        <div class="panel">
+          <div class="error-banner" id="profile-setup-error"></div>
+          <div class="field">
+            <label for="profile-setup-name">اسمك الكامل</label>
+            <input class="input" id="profile-setup-name" placeholder="مثلاً: أحمد العلي" maxlength="30">
+          </div>
+          <div class="field">
+            <label for="profile-setup-nickname">اللقب اللي يبيك أصحابك يشوفونه</label>
+            <input class="input" id="profile-setup-nickname" placeholder="مثلاً: أبو فهد" maxlength="20">
+          </div>
+          <div class="field">
+            <label>الجنس</label>
+            <div class="profile-gender-row">
+              <button class="gender-option" id="gender-male" onclick="selectGender('male')">
+                <svg class="gender-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="10" cy="14" r="6"/><path d="M14.5 9.5 L21 3 M21 3 H15 M21 3 V9"/></svg>
+                <span>رجال</span>
+              </button>
+              <button class="gender-option" id="gender-female" onclick="selectGender('female')">
+                <svg class="gender-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="9" r="6"/><path d="M12 15 V22 M9 19 H15"/></svg>
+                <span>حريم</span>
+              </button>
+            </div>
+          </div>
+          <button class="btn btn-primary btn-block btn-lg" id="profile-setup-submit" onclick="submitProfileSetup()">يلا ابدأ</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================
+       SCREEN: ACCOUNT (view/edit profile)
+  ============================================================= -->
+  <section class="screen" id="screen-account">
+    <div class="status-spacer on-white"></div>
+    <div class="app-scroll">
+      <div class="page">
+        <button class="page-back" onclick="backFromAccount()">→ رجوع</button>
+        <div class="page-head">
+          <div class="kicker">👤 حسابي</div>
+          <h2>بياناتك</h2>
+        </div>
+        <div class="panel">
+          <div class="error-banner" id="account-error"></div>
+          <div class="field">
+            <label for="account-name">اسمك الكامل</label>
+            <input class="input" id="account-name" maxlength="30">
+          </div>
+          <div class="field">
+            <label for="account-nickname">اللقب</label>
+            <input class="input" id="account-nickname" maxlength="20">
+          </div>
+          <div class="field">
+            <label>الجنس</label>
+            <div class="profile-gender-row">
+              <button class="gender-option" id="account-gender-male" onclick="selectAccountGender('male')">
+                <svg class="gender-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="10" cy="14" r="6"/><path d="M14.5 9.5 L21 3 M21 3 H15 M21 3 V9"/></svg>
+                <span>رجال</span>
+              </button>
+              <button class="gender-option" id="account-gender-female" onclick="selectAccountGender('female')">
+                <svg class="gender-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="9" r="6"/><path d="M12 15 V22 M9 19 H15"/></svg>
+                <span>حريم</span>
+              </button>
+            </div>
+          </div>
+          <button class="btn btn-primary btn-block btn-lg" onclick="saveAccountChanges()">احفظ التغييرات</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================
+       BOTTOM TAB BAR
+  ============================================================= -->
+  <nav class="tab-bar" id="tab-bar">
+    <button class="tab-btn active" data-tab="home" onclick="switchTab('home')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11 L12 3 L21 11 V20 A1 1 0 0 1 20 21 H15 V14 H9 V21 H4 A1 1 0 0 1 3 20 Z"/></svg>
+      الرئيسية<span class="tab-dot"></span>
+    </button>
+    <button class="tab-btn" data-tab="explore" onclick="switchTab('explore')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M21 21 L16.6 16.6"/></svg>
+      تصنيفات<span class="tab-dot"></span>
+    </button>
+    <button class="tab-btn" data-tab="majlis" onclick="openCreateRoom()">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 L20 7 V12 C20 17 16.5 20.5 12 22 C7.5 20.5 4 17 4 12 V7 Z"/></svg>
+      مجلس<span class="tab-dot"></span>
+    </button>
+    <button class="tab-btn" data-tab="join" onclick="openJoinRoom()">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 3 H6 A2 2 0 0 0 4 5 V19 A2 2 0 0 0 6 21 H16"/><path d="M10 12 H21 M21 12 L17 8 M21 12 L17 16"/></svg>
+      انضمام<span class="tab-dot"></span>
+    </button>
+  </nav>
+
+</div><!-- /app-frame -->
+<script>const ICONS = {
+  heritage: `<svg viewBox="0 0 64 64" fill="none"><path d="M6 40 L58 40 L52 50 L12 50 Z" fill="#FFFFFF"/><path d="M32 8 L32 38" stroke="#FFFFFF" stroke-width="3"/><path d="M32 12 C44 16 50 26 50 36 L32 38 Z" fill="#C9A14A"/><path d="M16 50 C16 56 48 56 48 50" stroke="#FFFFFF" stroke-width="3" fill="none"/></svg>`,
+  food: `<svg viewBox="0 0 64 64" fill="none"><path d="M20 30 C20 18 44 18 44 30 L44 34 L20 34 Z" fill="#1A1A1A"/><rect x="18" y="34" width="28" height="6" rx="2" fill="#1A1A1A"/><path d="M44 26 C52 26 52 36 44 36" stroke="#1A1A1A" stroke-width="3" fill="none"/><path d="M30 14 L30 20 M34 12 L34 20" stroke="#1A1A1A" stroke-width="3" stroke-linecap="round"/></svg>`,
+  worldcup: `<svg viewBox="0 0 64 64" fill="none"><circle cx="32" cy="26" r="16" fill="#FFFFFF"/><path d="M32 14 L37 20 L34 27 L30 27 L27 20 Z M18 24 L24 22 L24 30 L19 32 Z M46 24 L40 22 L40 30 L45 32 Z M24 36 L40 36 L37 42 L27 42 Z" fill="#1F6B62"/><path d="M24 42 L20 54 M40 42 L44 54 M18 54 L46 54" stroke="#FFFFFF" stroke-width="3" stroke-linecap="round"/></svg>`,
+  landmarks: `<svg viewBox="0 0 64 64" fill="none"><path d="M8 48 L8 30 L16 24 L16 48 Z" fill="#FFFFFF"/><path d="M20 48 L20 18 L32 8 L44 18 L44 48 Z" fill="#FFFFFF"/><path d="M48 48 L48 26 L56 32 L56 48 Z" fill="#FFFFFF"/><rect x="6" y="48" width="52" height="4" fill="#FFFFFF"/><circle cx="32" cy="22" r="2.5" fill="#B5562F"/></svg>`,
+  dialect: `<svg viewBox="0 0 64 64" fill="none"><path d="M8 14 H56 C58 14 60 16 60 18 V38 C60 40 58 42 56 42 H30 L18 52 V42 H8 C6 42 4 40 4 38 V18 C4 16 6 14 8 14 Z" fill="#FFFFFF"/><text x="32" y="33" font-family="Changa, sans-serif" font-size="20" font-weight="700" fill="#5C3661" text-anchor="middle">ش</text></svg>`,
+  modern: `<svg viewBox="0 0 64 64" fill="none"><rect x="10" y="26" width="10" height="26" fill="#C9A14A"/><rect x="22" y="14" width="12" height="38" fill="#FFFFFF"/><rect x="36" y="30" width="9" height="22" fill="#C9A14A"/><rect x="47" y="20" width="10" height="32" fill="#FFFFFF"/><rect x="6" y="52" width="54" height="3" fill="#FFFFFF"/></svg>`,
+  plus: `<svg viewBox="0 0 64 64" fill="none"><path d="M32 12 V52 M12 32 H52" stroke="#8A1538" stroke-width="5" stroke-linecap="round"/></svg>`,
+  trophy: `<svg viewBox="0 0 64 64" fill="none"><path d="M20 12 H44 V26 C44 34 38 40 32 40 C26 40 20 34 20 26 Z" fill="none" stroke="#8A1538" stroke-width="3"/><path d="M20 16 H12 V22 C12 27 16 30 20 30" fill="none" stroke="#8A1538" stroke-width="3"/><path d="M44 16 H52 V22 C52 27 48 30 44 30" fill="none" stroke="#8A1538" stroke-width="3"/><path d="M32 40 V48 M24 52 H40" stroke="#8A1538" stroke-width="3" stroke-linecap="round"/></svg>`,
+  friends: `<svg viewBox="0 0 64 64" fill="none"><circle cx="22" cy="22" r="8" fill="none" stroke="#8A1538" stroke-width="3"/><circle cx="42" cy="22" r="8" fill="none" stroke="#8A1538" stroke-width="3"/><path d="M8 50 C8 38 16 34 22 34 C28 34 36 38 36 50 M28 50 C28 38 34 34 42 34 C48 34 56 38 56 50" fill="none" stroke="#8A1538" stroke-width="3" stroke-linecap="round"/></svg>`,
+};
+
+const CATEGORIES = [
+  { id: 'heritage', name: 'التراث', sub: 'سفن، غوص، الدوحة القديمة', desc: 'من سفن الغوص للدوحة القديمة — شوف قد إيش تعرف عن تراثنا', icon: ICONS.heritage, color: 'maroon' },
+  { id: 'food', name: 'الأكل القطري', sub: 'مجبوس، كرك، حلويات', desc: 'مجبوس، كرك، ولقيمات — أكيد تعرف الأكل بس وش تعرف عنه؟', icon: ICONS.food, color: 'gold' },
+  { id: 'worldcup', name: 'كأس العالم', sub: 'قطر ٢٠٢٢', desc: 'أيام ما ننساها — قد إيش فاكر من كأس العالم؟', icon: ICONS.worldcup, color: 'teal' },
+  { id: 'landmarks', name: 'معالم قطر', sub: 'المتحف، سوق واقف، اللؤلؤة', desc: 'من المتحف لسوق واقف — تعرف معالم بلدك زين؟', icon: ICONS.landmarks, color: 'terracotta' },
+  { id: 'dialect', name: 'اللهجة القطرية', sub: 'كلمات وتعابير محلية', desc: 'كلمات نقولها كل يوم — بس وش معناها بالضبط؟', icon: ICONS.dialect, color: 'plum' },
+  { id: 'modern', name: 'قطر الحديثة', sub: 'الاقتصاد والإنجازات', desc: 'قطر اليوم — اقتصاد، إنجازات، وأفق الدوحة', icon: ICONS.modern, color: 'ink' },
+];
+
+// Sample question bank — 10 per category, quiz uses first N based on room/solo setting
+const QUESTION_BANK = {
+  heritage: [
+    { q: 'ما اسم السفينة التقليدية المستخدمة في الغوص عن اللؤلؤ؟', choices: ['الدانة', 'البتيل', 'الجالبوت', 'السنبوك'], correct: 0 },
+    { q: 'ما هو السوق التراثي الأشهر في الدوحة؟', choices: ['سوق واقف', 'سوق الذهب', 'السوق الشعبي', 'سوق التراث'], correct: 0 },
+    { q: 'ماذا كانت تسمى مهنة استخراج اللؤلؤ؟', choices: ['الصيد', 'الغوص', 'البحث', 'الجلب'], correct: 1 },
+    { q: 'ما اسم المنزل التقليدي القطري القديم؟', choices: ['البيت الشعبي', 'بيت الشعر', 'البيت العتيق', 'الفريج'], correct: 1 },
+    { q: 'أي مادة استُخدمت تقليديًا في بناء المنازل القطرية القديمة؟', choices: ['الطين والحجر المرجاني', 'الخشب فقط', 'الطوب الأحمر', 'الإسمنت'], correct: 0 },
+    { q: 'ما اسم الرقصة الشعبية القطرية المرتبطة بالبحر؟', choices: ['العرضة', 'الفجري', 'السامري', 'الهبان'], correct: 1 },
+    { q: 'ما هو "الفريج" في الثقافة القطرية؟', choices: ['نوع طعام', 'الحي السكني التقليدي', 'لعبة شعبية', 'قماش تقليدي'], correct: 1 },
+    { q: 'متى كان موسم الغوص التقليدي على اللؤلؤ يبدأ عادة؟', choices: ['الشتاء', 'الصيف', 'الخريف', 'طوال السنة'], correct: 1 },
+    { q: 'ما اسم القارب الصغير المستخدم للصيد القريب من الشاطئ؟', choices: ['الهوري', 'البغلة', 'البوم', 'الشوعي'], correct: 0 },
+    { q: 'ما هو الزي التقليدي الذي يرتديه الرجل القطري على الرأس؟', choices: ['الغترة والعقال', 'الطاقية فقط', 'الشماغ الأحمر', 'العمامة'], correct: 0 },
+  ],
+  food: [
+    { q: 'ما هو الطبق الوطني القطري المصنوع من الأرز واللحم؟', choices: ['المجبوس', 'الكبسة', 'البرياني', 'المندي'], correct: 0 },
+    { q: 'ما هو المشروب التقليدي الشعبي في قطر؟', choices: ['الشاي الأخضر', 'الكرك', 'القهوة السادة فقط', 'العصير'], correct: 1 },
+    { q: 'ما اسم الحلوى القطرية التقليدية المصنوعة من النشا والسكر؟', choices: ['البلاليط', 'اللقيمات', 'العصيدة', 'الكنافة'], correct: 1 },
+    { q: 'ما هو طبق "الثريد" المكوّن أساسًا منه؟', choices: ['الخبز واللحم', 'الأرز والسمك', 'الخضار فقط', 'العدس'], correct: 0 },
+    { q: 'أي توابل يشتهر بها المجبوس القطري؟', choices: ['البهارات القطرية الخاصة', 'الفلفل الأسود فقط', 'الزعفران فقط', 'الكمون فقط'], correct: 0 },
+    { q: 'ما اسم وجبة الفطور الشعبية المكوّنة من البيض والطماطم؟', choices: ['البيض بلبن', 'الشكشوكة', 'البلاليط', 'الجشيد'], correct: 1 },
+    { q: 'ما هو "الهريس" المقدم عادة في رمضان والمناسبات؟', choices: ['عصيدة من القمح واللحم', 'نوع حلوى', 'نوع شاي', 'سلطة خضار'], correct: 0 },
+    { q: 'بأي مناسبة يرتبط طبق "اللقيمات" بشكل خاص؟', choices: ['رمضان', 'الأعياد الوطنية فقط', 'الأعراس فقط', 'لا يرتبط بمناسبة'], correct: 0 },
+    { q: 'ما هو المكوّن الأساسي في "ساغو" الحلوى القطرية؟', choices: ['حبوب الساغو والحليب', 'الأرز والسكر', 'التمر فقط', 'دقيق القمح'], correct: 0 },
+    { q: 'ما اسم الخبز التقليدي الرقيق المستخدم في البلاليط وغيره؟', choices: ['الرقاق', 'الخبز الفرنسي', 'الصمون', 'التميس'], correct: 0 },
+  ],
+  worldcup: [
+    { q: 'في أي عام استضافت قطر كأس العالم؟', choices: ['٢٠١٨', '٢٠٢٠', '٢٠٢٢', '٢٠٢٤'], correct: 2 },
+    { q: 'ما اسم الملعب الذي أقيمت فيه المباراة النهائية؟', choices: ['ملعب لوسيل', 'ملعب البيت', 'ملعب ٩٧٤', 'ملعب الجنوب'], correct: 0 },
+    { q: 'أي منتخب فاز بكأس العالم ٢٠٢٢؟', choices: ['فرنسا', 'الأرجنتين', 'البرازيل', 'كرواتيا'], correct: 1 },
+    { q: 'ما اسم التميمة الرسمية لكأس العالم قطر ٢٠٢٢؟', choices: ['لعيب', 'زاكومي', 'فولكو', 'سامبا'], correct: 1 },
+    { q: 'كم عدد الملاعب التي استضافت مباريات البطولة؟', choices: ['٦', '٨', '١٠', '١٢'], correct: 1 },
+    { q: 'أي ملعب بُني بالكامل من حاويات الشحن القابلة لإعادة التدوير؟', choices: ['ملعب ٩٧٤', 'ملعب لوسيل', 'ملعب خليفة', 'ملعب الثمامة'], correct: 0 },
+    { q: 'من كان الهداف الأعلى تسجيلاً للأهداف في البطولة؟', choices: ['ميسي', 'مبابي', 'رونالدو', 'نيمار'], correct: 1 },
+    { q: 'كانت بطولة قطر ٢٠٢٢ أول كأس عالم تُقام في أي فصل؟', choices: ['الصيف', 'الشتاء', 'الربيع', 'الخريف'], correct: 1 },
+    { q: 'كم عدد المنتخبات المشاركة في البطولة؟', choices: ['٢٤', '٣٠', '٣٢', '٣٦'], correct: 2 },
+    { q: 'أي مدينة قطرية احتضنت أكبر عدد من الملاعب؟', choices: ['الدوحة', 'الوكرة', 'الخور', 'الريان'], correct: 0 },
+  ],
+  landmarks: [
+    { q: 'من صمّم مبنى متحف الفن الإسلامي في الدوحة؟', choices: ['آي إم بي', 'زها حديد', 'نورمان فوستر', 'جان نوفيل'], correct: 0 },
+    { q: 'ما اسم الجزيرة الاصطناعية الفاخرة في الدوحة؟', choices: ['جزيرة اللؤلؤة', 'جزيرة الموز', 'جزيرة بالم', 'جزيرة الخور'], correct: 0 },
+    { q: 'أين يقع "سوق واقف" بالتحديد؟', choices: ['وسط الدوحة على الكورنيش', 'في الوكرة', 'في الشمال', 'في الريان'], correct: 0 },
+    { q: 'ما اسم البرج الأشهر ذو التصميم الحلزوني في الدوحة؟', choices: ['برج الدوحة', 'برج بوابة الشرق', 'برج اللؤلؤة', 'برج قطر'], correct: 0 },
+    { q: 'ما هي "كتارا" المعروفة في الدوحة؟', choices: ['الحي الثقافي', 'مركز تسوق', 'حديقة عامة', 'مطار قديم'], correct: 0 },
+    { q: 'أي معلم قطري يقع بالقرب من الكورنيش ويُعد رمزًا للدولة؟', choices: ['برج بوابة الشرق', 'متحف الفن الإسلامي', 'كتارا', 'سوق واقف'], correct: 1 },
+    { q: 'ما اسم منطقة الأعمال الحديثة المطلة على الخليج في الدوحة؟', choices: ['الخليج الغربي', 'الوكرة', 'مسيعيد', 'الشمال'], correct: 0 },
+    { q: 'ما هو "متحف قطر الوطني" مستوحى من شكله؟', choices: ['وردة الصحراء', 'صدفة بحرية', 'سفينة شراعية', 'نخلة'], correct: 0 },
+    { q: 'في أي منطقة يقع "متحف قطر الوطني"؟', choices: ['بالقرب من قصر الأمير القديم', 'في الشمال', 'في الريان', 'في مسيعيد'], correct: 0 },
+    { q: 'ما هي الوظيفة الأساسية لمبنى "برج بوابة الشرق"؟', choices: ['مكاتب وأعمال', 'فندق فقط', 'متحف', 'مطار'], correct: 0 },
+  ],
+  dialect: [
+    { q: 'ماذا تعني كلمة "شلونك" في اللهجة القطرية؟', choices: ['كيف حالك', 'إلى أين', 'ما اسمك', 'متى تأتي'], correct: 0 },
+    { q: 'ماذا تعني كلمة "زين" في اللهجة المحلية؟', choices: ['جيد / حسناً', 'سيء', 'كبير', 'بعيد'], correct: 0 },
+    { q: 'ماذا تعني كلمة "يبه"؟', choices: ['تعبير تعجب', 'وداعاً', 'شكراً', 'عفواً'], correct: 0 },
+    { q: 'ماذا تعني "وايد" في اللهجة القطرية؟', choices: ['كثير / جداً', 'قليل', 'أبداً', 'ربما'], correct: 0 },
+    { q: 'ماذا تعني كلمة "درب" في اللهجة المحلية؟', choices: ['طريق / شارع', 'منزل', 'سيارة', 'محل'], correct: 0 },
+    { q: 'ماذا تعني "حيل" في السياق القطري؟', choices: ['جداً / كثيراً', 'بطيء', 'صغير', 'متأخر'], correct: 0 },
+    { q: 'ماذا تعني كلمة "تراني" في اللهجة المحلية؟', choices: ['ربما / لعل', 'أبداً', 'الآن', 'غداً'], correct: 0 },
+    { q: 'ماذا تعني "خوش" كصفة في اللهجة القطرية؟', choices: ['جيد / ممتاز', 'سيء', 'غريب', 'قديم'], correct: 0 },
+    { q: 'ماذا تعني كلمة "عقب" في اللهجة المحلية؟', choices: ['بعد', 'قبل', 'مع', 'بدون'], correct: 0 },
+    { q: 'ماذا تعني "شوي شوي" في الاستخدام اليومي؟', choices: ['ببطء / قليلاً قليلاً', 'بسرعة', 'كثيراً', 'أبداً'], correct: 0 },
+  ],
+  modern: [
+    { q: 'ما هي العملة الرسمية لدولة قطر؟', choices: ['الريال القطري', 'الدينار', 'الدرهم', 'الجنيه'], correct: 0 },
+    { q: 'ما هو المورد الاقتصادي الرئيسي لقطر؟', choices: ['الغاز الطبيعي المسال', 'الزراعة', 'السياحة فقط', 'التعدين'], correct: 0 },
+    { q: 'ما اسم شركة الطيران الوطنية القطرية؟', choices: ['الخطوط القطرية', 'طيران الخليج', 'فلاي دبي', 'العربية'], correct: 0 },
+    { q: 'ما هي الرؤية الوطنية التنموية طويلة المدى لقطر؟', choices: ['رؤية قطر الوطنية ٢٠٣٠', 'رؤية ٢٠٤٠', 'خطة النهضة', 'مشروع المستقبل'], correct: 0 },
+    { q: 'أين يقع المقر الرئيسي لقناة الجزيرة؟', choices: ['الدوحة', 'الرياض', 'أبوظبي', 'المنامة'], correct: 0 },
+    { q: 'ما اسم الجامعة التي تضم فروعًا لجامعات عالمية في قطر؟', choices: ['المدينة التعليمية', 'جامعة قطر فقط', 'أكاديمية الدوحة', 'معهد قطر'], correct: 0 },
+    { q: 'أي مؤسسة قطرية تُعنى بدعم البحث العلمي والتعليم؟', choices: ['مؤسسة قطر', 'هيئة المتاحف', 'مجلس التخطيط', 'صندوق التنمية'], correct: 0 },
+    { q: 'ما اسم البنك المركزي في دولة قطر؟', choices: ['مصرف قطر المركزي', 'بنك قطر الوطني', 'بنك الدوحة', 'البنك التجاري'], correct: 0 },
+    { q: 'في أي عام أصبحت قطر دولة مستقلة؟', choices: ['١٩٧١', '١٩٦٨', '١٩٨٠', '١٩٦٠'], correct: 0 },
+    { q: 'ما اسم صندوق الثروة السيادي القطري؟', choices: ['جهاز قطر للاستثمار', 'صندوق قطر الوطني', 'هيئة الاستثمار القطرية', 'بنك قطر للتنمية'], correct: 0 },
+  ],
+};
+
+
+const CAT_BY_ID = Object.fromEntries(CATEGORIES.map(c => [c.id, c]));
+const CARD_COLOR_CLASS = { maroon: 'card--maroon', gold: 'card--gold', teal: 'card--teal', terracotta: 'card--terracotta', plum: 'card--plum', ink: 'card--ink' };
+
+/* ============================================================
+   APP STATE
+============================================================= */
+const state = {
+  activeTab: 'home',
+  homeCarouselIndex: 0,
+  pendingCategoryId: null, // category chosen, awaiting play-mode pick
+  pickerOriginTab: 'home', // which tab the picker was opened from, for back navigation
+
+  profile: { name: '', nickname: '', gender: '' }, // persisted to localStorage, captured once before first play
+  pendingPlayAction: null, // function to run once profile setup completes
+
+  solo: { categoryId: null, questions: [], index: 0, score: 0, streak: 0, bestStreak: 0, answered: false, lifeline5050Used: false, lifelineSkipUsed: false, hiddenChoices: [] },
+
+  room: {
+    code: null, playerId: null, playerName: null, isHost: false,
+    pollTimer: null, lastQuestionIndex: -1, answeredThisQuestion: false,
+    cameFromPicker: false,
+  },
+};
+
+const GENDER_AVATAR_COLOR = { male: '#1F6B62', female: '#5C3661' };
+const DEFAULT_AVATAR_COLOR = '#8A1538';
+
+function avatarColorForGender(gender) { return GENDER_AVATAR_COLOR[gender] || DEFAULT_AVATAR_COLOR; }
+
+/* ============================================================
+   PROFILE — name / nickname / gender, captured once, stored locally
+============================================================= */
+function loadProfile() {
+  try {
+    const raw = localStorage.getItem('profile');
+    if (raw) state.profile = JSON.parse(raw);
+  } catch (e) {}
+}
+function saveProfile() {
+  try { localStorage.setItem('profile', JSON.stringify(state.profile)); } catch (e) {}
+}
+function hasProfile() { return !!(state.profile && state.profile.name && state.profile.nickname); }
+
+function requireProfile(action) {
+  if (hasProfile()) { action(); return; }
+  state.pendingPlayAction = action;
+  go('profile-setup');
+  document.getElementById('profile-setup-name').value = '';
+  document.getElementById('profile-setup-nickname').value = '';
+  document.querySelectorAll('#screen-profile-setup .gender-option').forEach(b => b.classList.remove('selected'));
+  state._pendingGender = '';
+  hideError('profile-setup-error');
+}
+
+function selectGender(g) {
+  state._pendingGender = g;
+  document.getElementById('gender-male').classList.toggle('selected', g === 'male');
+  document.getElementById('gender-female').classList.toggle('selected', g === 'female');
+}
+
+function submitProfileSetup() {
+  hideError('profile-setup-error');
+  const name = document.getElementById('profile-setup-name').value.trim();
+  const nickname = document.getElementById('profile-setup-nickname').value.trim();
+  const gender = state._pendingGender || '';
+
+  if (!name) { showError('profile-setup-error', 'اكتب اسمك الكامل'); return; }
+  if (!nickname) { showError('profile-setup-error', 'اكتب اللقب اللي تبيه'); return; }
+  if (!gender) { showError('profile-setup-error', 'اختر الجنس'); return; }
+
+  state.profile = { name, nickname, gender };
+  saveProfile();
+
+  const action = state.pendingPlayAction;
+  state.pendingPlayAction = null;
+  syncAccountChip();
+  if (action) action();
+  else go('home');
+}
+
+/* ---------- account screen (view/edit) ---------- */
+function openAccount() {
+  if (!hasProfile()) { requireProfile(() => go('account')); return; }
+  document.getElementById('account-name').value = state.profile.name;
+  document.getElementById('account-nickname').value = state.profile.nickname;
+  document.getElementById('account-gender-male').classList.toggle('selected', state.profile.gender === 'male');
+  document.getElementById('account-gender-female').classList.toggle('selected', state.profile.gender === 'female');
+  state._accountGender = state.profile.gender;
+  hideError('account-error');
+  go('account');
+}
+function backFromAccount() { go(state.activeTab || 'home'); }
+function selectAccountGender(g) {
+  state._accountGender = g;
+  document.getElementById('account-gender-male').classList.toggle('selected', g === 'male');
+  document.getElementById('account-gender-female').classList.toggle('selected', g === 'female');
+}
+function saveAccountChanges() {
+  hideError('account-error');
+  const name = document.getElementById('account-name').value.trim();
+  const nickname = document.getElementById('account-nickname').value.trim();
+  const gender = state._accountGender || '';
+  if (!name) { showError('account-error', 'اكتب اسمك الكامل'); return; }
+  if (!nickname) { showError('account-error', 'اكتب اللقب'); return; }
+  if (!gender) { showError('account-error', 'اختر الجنس'); return; }
+  state.profile = { name, nickname, gender };
+  saveProfile();
+  syncAccountChip();
+  showToast('تم حفظ بياناتك');
+  go(state.activeTab || 'home');
+}
+
+function syncAccountChip() {
+  const chip = document.getElementById('account-chip');
+  if (!chip) return;
+  if (hasProfile()) {
+    chip.classList.remove('account-chip-guest');
+    const color = avatarColorForGender(state.profile.gender);
+    chip.innerHTML = `<span class="avatar-dot" style="background:${color};">${state.profile.nickname.charAt(0)}</span><span>${state.profile.nickname}</span>`;
+  } else {
+    chip.classList.add('account-chip-guest');
+    chip.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 20 C4 15.5 7.5 13 12 13 C16.5 13 20 15.5 20 20"/></svg>`;
+  }
+}
+
+/* ---------- entry points that now require a profile first ---------- */
+function quickPlaySolo() {
+  // hero "play solo" button with no category chosen yet — send to explore tab to pick one
+  requireProfile(() => switchTab('explore'));
+}
+
+
+/* ============================================================
+   NAVIGATION — two layers: persistent tabs (home/explore) and
+   stacked screens (everything else, pushed over the tab bar area)
+============================================================= */
+const TAB_SCREENS = ['home', 'explore'];
+
+function go(screenKey) {
+  document.querySelectorAll('.screen, .screen-static').forEach(s => s.classList.remove('active'));
+  const el = document.getElementById('screen-' + screenKey);
+  if (el) el.classList.add('active');
+  const scroller = el ? el.querySelector('.app-scroll') : null;
+  if (scroller) scroller.scrollTop = 0;
+
+  if (TAB_SCREENS.includes(screenKey)) {
+    state.activeTab = screenKey;
+    syncTabBar();
+    document.getElementById('tab-bar').style.display = 'flex';
+  } else {
+    document.getElementById('tab-bar').style.display = 'none';
+  }
+
+  if (screenKey !== 'lobby' && screenKey !== 'room-quiz') {
+    stopRoomPolling();
+  }
+}
+
+function switchTab(tabKey) {
+  go(tabKey);
+}
+
+function syncTabBar() {
+  document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.tab === state.activeTab);
+  });
+}
+
+function showToast(msg, isError) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.style.background = isError ? 'var(--red)' : 'var(--text-dark)';
+  t.classList.add('show');
+  clearTimeout(showToast._timer);
+  showToast._timer = setTimeout(() => t.classList.remove('show'), 2600);
+}
+function showError(elId, msg) { const el = document.getElementById(elId); el.textContent = msg; el.classList.add('show'); }
+function hideError(elId) { document.getElementById(elId).classList.remove('show'); }
+function arabicNum(n) { const map = ['٠','١','٢','٣','٤','٥','٦','٧','٨','٩']; return String(n).split('').map(ch => map[ch] || ch).join(''); }
+
+/* ============================================================
+   HOME: CATEGORY CAROUSEL (single centered card, left/right arrows)
+============================================================= */
+function renderHomeCarousel() {
+  const track = document.getElementById('home-cat-track');
+  const cat = CATEGORIES[state.homeCarouselIndex];
+  track.innerHTML = `
+    <button class="cat-card-main ${CARD_COLOR_CLASS[cat.color]}" onclick="pickCategory('${cat.id}')">
+      <div class="cat-card-icon">${cat.icon}</div>
+      <div class="cat-card-name">${cat.name}</div>
+      <div class="cat-card-sub">${cat.sub}</div>
+      <span class="cat-card-cta">يلا ابدأ</span>
+    </button>
+  `;
+  const dots = document.getElementById('home-cat-dots');
+  dots.innerHTML = CATEGORIES.map((c, i) => `<div class="dot ${i === state.homeCarouselIndex ? 'active' : ''}"></div>`).join('');
+}
+
+function homeCarouselMove(dir) {
+  const n = CATEGORIES.length;
+  // RTL note: visually "right arrow" should feel like "next" reading right-to-left,
+  // so right arrow advances forward and left arrow goes back — matches arrow placement in markup.
+  state.homeCarouselIndex = (state.homeCarouselIndex + dir + n) % n;
+  renderHomeCarousel();
+}
+
+/* ============================================================
+   EXPLORE TAB: full grid of categories
+============================================================= */
+function renderExploreGrid() {
+  const grid = document.getElementById('explore-grid');
+  grid.innerHTML = CATEGORIES.map(cat => `
+    <button class="explore-card ${CARD_COLOR_CLASS[cat.color]}" onclick="pickCategory('${cat.id}')">
+      <div class="cat-card-icon">${cat.icon}</div>
+      <div>
+        <div class="explore-name">${cat.name}</div>
+        <div class="explore-sub">${cat.sub}</div>
+      </div>
+    </button>
+  `).join('');
+}
+
+/* ============================================================
+   HOME: FULL CATEGORY LIST WITH SHORT DESCRIPTIONS
+============================================================= */
+function renderHomeCategoryDescList() {
+  const list = document.getElementById('home-cat-desc-list');
+  if (!list) return;
+  const bgFor = { maroon: 'rgba(138,21,56,0.1)', gold: 'rgba(201,161,74,0.15)', teal: 'rgba(31,107,98,0.1)', terracotta: 'rgba(181,86,47,0.1)', plum: 'rgba(92,54,97,0.1)', ink: 'rgba(26,26,26,0.08)' };
+  const iconFor = { maroon: '#8A1538', gold: '#8a6d28', teal: '#1F6B62', terracotta: '#B5562F', plum: '#5C3661', ink: '#1A1A1A' };
+  list.innerHTML = CATEGORIES.map(cat => `
+    <button class="cat-desc-card" onclick="pickCategory('${cat.id}')">
+      <div class="cat-desc-icon-wrap" style="background:${bgFor[cat.color]};">${cat.icon.replace(/fill="#FFFFFF"/g, `fill="${iconFor[cat.color]}"`).replace(/stroke="#FFFFFF"/g, `stroke="${iconFor[cat.color]}"`)}</div>
+      <div class="cat-desc-body">
+        <strong>${cat.name}</strong>
+        <p>${cat.desc}</p>
+      </div>
+      <span class="cat-desc-arrow">‹</span>
+    </button>
+  `).join('');
+}
+
+/* ============================================================
+   PLAY MODE PICKER (solo / join friends / make a majlis)
+============================================================= */
+function pickCategory(catId) {
+  state.pendingCategoryId = catId;
+  state.pickerOriginTab = state.activeTab; // remember home vs explore so back button returns correctly
+  const cat = CAT_BY_ID[catId];
+  const head = document.getElementById('play-mode-head');
+  head.innerHTML = `
+    <div class="pm-icon">${cat.icon.replace(/fill="#FFFFFF"/g, 'fill="#8A1538"').replace(/stroke="#FFFFFF"/g, 'stroke="#8A1538"')}</div>
+    <h2>${cat.name} — وش تبي تسوي؟</h2>
+    <p>${cat.desc}</p>
+  `;
+  go('play-mode');
+}
+
+function backFromPlayMode() {
+  go(state.pickerOriginTab || 'home');
+}
+
+function openCategoryFromHome(catId) {
+  // used by footer quick-links — same entry point as tapping a carousel card
+  pickCategory(catId);
+}
+
+function startSoloQuizFromPicker() {
+  requireProfile(() => startSoloQuiz(state.pendingCategoryId));
+}
+function openCreateRoomFromPicker() {
+  requireProfile(() => {
+    state.room.cameFromPicker = true;
+    openCreateRoom();
+    if (state.pendingCategoryId) {
+      document.getElementById('create-room-cat').value = state.pendingCategoryId;
+    }
+  });
+}
+function openJoinRoomFromPicker() {
+  requireProfile(() => {
+    state.room.cameFromPicker = true;
+    openJoinRoom();
+  });
+}
+function goBackFromCreate() {
+  if (state.room.cameFromPicker && state.pendingCategoryId) { state.room.cameFromPicker = false; go('play-mode'); }
+  else { go(state.pickerOriginTab || 'home'); }
+}
+function goBackFromJoin() {
+  if (state.room.cameFromPicker) { state.room.cameFromPicker = false; go(state.pendingCategoryId ? 'play-mode' : (state.pickerOriginTab || 'home')); }
+  else { go(state.pickerOriginTab || 'home'); }
+}
+
+/* ============================================================
+   SOLO QUIZ
+============================================================= */
+function startSoloQuiz(catId) {
+  const bank = QUESTION_BANK[catId].slice(0, 5);
+  state.solo = {
+    categoryId: catId, questions: bank, index: 0, score: 0,
+    streak: 0, bestStreak: 0, answered: false,
+    lifeline5050Used: false, lifelineSkipUsed: false, hiddenChoices: [],
+  };
+  go('quiz');
+  renderSoloQuestion();
+}
+
+function retrySoloQuiz() { startSoloQuiz(state.solo.categoryId); }
+
+function renderSoloQuestion() {
+  const s = state.solo;
+  const cat = CAT_BY_ID[s.categoryId];
+  const q = s.questions[s.index];
+  const total = s.questions.length;
+
+  document.getElementById('quiz-cat-label').textContent = cat.name;
+  document.getElementById('quiz-progress-label').textContent = `السؤال ${arabicNum(s.index + 1)} من ${arabicNum(total)}`;
+  document.getElementById('quiz-score-pill').textContent = `${arabicNum(s.score)} نقطة`;
+  document.getElementById('quiz-progress-fill').style.width = `${(s.index / total) * 100}%`;
+  document.getElementById('quiz-question-text').textContent = q.q;
+  document.getElementById('quiz-next-btn').disabled = true;
+  document.getElementById('quiz-next-btn').textContent = (s.index === total - 1) ? 'شوف نتيجتك' : 'السؤال اللي بعده';
+
+  document.getElementById('lifeline-5050').disabled = s.lifeline5050Used;
+  document.getElementById('lifeline-skip').disabled = s.lifelineSkipUsed;
+
+  const streakRow = document.getElementById('quiz-streak-row');
+  if (s.streak >= 2) {
+    streakRow.style.display = 'flex';
+    document.getElementById('quiz-streak-text').textContent = `سلسلة ${arabicNum(s.streak)} صح ورا بعض، كمّل كذا! 🔥`;
+  } else {
+    streakRow.style.display = 'none';
+  }
+
+  const letters = ['أ', 'ب', 'ج', 'د'];
+  const choicesEl = document.getElementById('quiz-choices');
+  choicesEl.innerHTML = q.choices.map((choice, idx) => `
+    <button class="choice" data-idx="${idx}" onclick="answerSolo(${idx})" ${s.hiddenChoices.includes(idx) ? 'style="display:none;"' : ''}>
+      <span class="choice-row"><span class="choice-letter">${letters[idx]}</span><span>${choice}</span></span>
+    </button>
+  `).join('');
+  s.answered = false;
+}
+
+function answerSolo(idx) {
+  const s = state.solo;
+  if (s.answered) return;
+  s.answered = true;
+  const q = s.questions[s.index];
+  const correct = q.correct;
+  document.querySelectorAll('#quiz-choices .choice').forEach(btn => {
+    const i = Number(btn.dataset.idx);
+    btn.disabled = true;
+    if (i === correct) btn.classList.add('correct');
+    else if (i === idx) btn.classList.add('wrong');
+  });
+  if (idx === correct) {
+    s.score += 1;
+    s.streak += 1;
+    if (s.streak > s.bestStreak) s.bestStreak = s.streak;
+    document.getElementById('quiz-score-pill').textContent = `${arabicNum(s.score)} نقطة`;
+  } else {
+    s.streak = 0;
+  }
+  document.getElementById('quiz-next-btn').disabled = false;
+}
+
+function quizNext() {
+  const s = state.solo;
+  if (s.index < s.questions.length - 1) { s.index += 1; renderSoloQuestion(); }
+  else showSoloResults();
+}
+
+function useLifeline5050() {
+  const s = state.solo;
+  if (s.lifeline5050Used || s.answered) return;
+  s.lifeline5050Used = true;
+  const q = s.questions[s.index];
+  const wrongIndices = q.choices.map((_, i) => i).filter(i => i !== q.correct);
+  const toHide = wrongIndices.sort(() => Math.random() - 0.5).slice(0, 2);
+  s.hiddenChoices = toHide;
+  toHide.forEach(i => { const btn = document.querySelector(`#quiz-choices .choice[data-idx="${i}"]`); if (btn) btn.style.display = 'none'; });
+  document.getElementById('lifeline-5050').disabled = true;
+}
+
+function useLifelineSkip() {
+  const s = state.solo;
+  if (s.lifelineSkipUsed || s.answered) return;
+  s.lifelineSkipUsed = true;
+  s.streak = 0;
+  document.getElementById('lifeline-skip').disabled = true;
+  quizNext();
+}
+
+function showSoloResults() {
+  const s = state.solo;
+  const total = s.questions.length;
+  document.getElementById('results-score').textContent = arabicNum(s.score);
+  document.getElementById('results-total').textContent = arabicNum(total);
+  const pct = s.score / total;
+  let emoji = '🌱', label = 'مو بطل بس جرب مرة ثانية!';
+  if (pct === 1) { emoji = '🏆'; label = 'ما شاء الله، كلها صح!'; }
+  else if (pct >= 0.8) { emoji = '🥇'; label = 'يا سلام عليك!'; }
+  else if (pct >= 0.5) { emoji = '👍'; label = 'زينة، بس فيه أحسن!'; }
+  if (s.bestStreak >= 4) label += ` (سلسلة ${arabicNum(s.bestStreak)} 🔥)`;
+  document.getElementById('results-emoji').textContent = emoji;
+  document.getElementById('results-label').textContent = label;
+  go('results');
+}
+
+function confirmLeaveQuiz() {
+  if (confirm('تبي تطلع من السؤال؟ بتضيع تقدمك الحالي.')) go('home');
+}
+
+/* ============================================================
+   ROOM / MAJLIS — built on Firebase Realtime Database (shared, polled)
+   NOTE: this REQUIRES a Firebase project. Fill in FIREBASE_CONFIG below
+   with your own project's keys (Firebase console → Project settings →
+   General → "Your apps" → SDK setup and configuration → Config).
+   Realtime Database must be enabled (Build → Realtime Database → Create
+   Database), and its rules need to allow read/write for this to work
+   (see README for the exact rules to paste in).
+============================================================= */
+const FIREBASE_CONFIG = {
+  apiKey: "YOUR_API_KEY",
+  authDomain: "YOUR_PROJECT.firebaseapp.com",
+  databaseURL: "https://YOUR_PROJECT-default-rtdb.firebaseio.com",
+  projectId: "YOUR_PROJECT",
+  storageBucket: "YOUR_PROJECT.appspot.com",
+  messagingSenderId: "YOUR_SENDER_ID",
+  appId: "YOUR_APP_ID"
+};
+
+let _fbDb = null;
+function getFirebaseDb() {
+  if (_fbDb) return _fbDb;
+  if (typeof firebase === 'undefined') {
+    console.error('Firebase SDK not loaded — check the <script> tags in <head>.');
+    return null;
+  }
+  if (FIREBASE_CONFIG.apiKey === 'YOUR_API_KEY') {
+    console.error('Firebase is not configured yet — fill in FIREBASE_CONFIG in app.js with your own project keys (see README).');
+    return null;
+  }
+  if (!firebase.apps.length) firebase.initializeApp(FIREBASE_CONFIG);
+  _fbDb = firebase.database();
+  return _fbDb;
+}
+
+const ROOM_CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // no 0/O/1/I to avoid confusion
+function generateRoomCode() { let c=''; for (let i=0;i<4;i++) c += ROOM_CODE_CHARS[Math.floor(Math.random()*ROOM_CODE_CHARS.length)]; return c; }
+function generatePlayerId() { return 'p_' + Math.random().toString(36).slice(2, 10); }
+
+const AVATAR_COLORS = ['#8A1538', '#C9A14A', '#1F6B62', '#B5562F', '#5C3661', '#1A1A1A'];
+function avatarColorFor(playerId) { let h=0; for (let i=0;i<playerId.length;i++) h=(h*31+playerId.charCodeAt(i))>>>0; return AVATAR_COLORS[h % AVATAR_COLORS.length]; }
+
+async function storageGetRoom(code) {
+  const db = getFirebaseDb();
+  if (!db) return null;
+  try {
+    const snap = await db.ref('rooms/' + code).once('value');
+    return snap.exists() ? snap.val() : null;
+  } catch (e) { console.error('storageGetRoom failed:', e); return null; }
+}
+async function storageSetRoom(roomObj) {
+  const db = getFirebaseDb();
+  if (!db) return false;
+  try { await db.ref('rooms/' + roomObj.code).set(roomObj); return true; }
+  catch (e) { console.error('storageSetRoom failed:', e); return false; }
+}
+async function storageGetAnswers(code, qIndex) {
+  const db = getFirebaseDb();
+  if (!db) return {};
+  try {
+    const snap = await db.ref(`answers/${code}/${qIndex}`).once('value');
+    return snap.exists() ? snap.val() : {};
+  } catch (e) { console.error('storageGetAnswers failed:', e); return {}; }
+}
+async function storageSetAnswers(code, qIndex, answersObj) {
+  const db = getFirebaseDb();
+  if (!db) return;
+  try { await db.ref(`answers/${code}/${qIndex}`).set(answersObj); }
+  catch (e) { console.error('storageSetAnswers failed:', e); }
+}
+
+/* ---------- create majlis ---------- */
+function openCreateRoom() {
+  if (!hasProfile()) { requireProfile(() => openCreateRoom()); return; }
+  hideError('create-room-error');
+  const sel = document.getElementById('create-room-cat');
+  sel.innerHTML = CATEGORIES.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
+  document.getElementById('create-room-name').value = state.room.playerName || state.profile.nickname || '';
+  go('create-room');
+}
+function openCreateRoomFromResults() {
+  openCreateRoom();
+  const sel = document.getElementById('create-room-cat');
+  if (state.solo.categoryId) sel.value = state.solo.categoryId;
+}
+function openJoinRoom() {
+  if (!hasProfile()) { requireProfile(() => openJoinRoom()); return; }
+  go('join-room');
+  hideError('join-room-error');
+  document.getElementById('join-room-name').value = state.room.playerName || state.profile.nickname || '';
+}
+
+async function submitCreateRoom() {
+  hideError('create-room-error');
+  const name = document.getElementById('create-room-name').value.trim();
+  const catId = document.getElementById('create-room-cat').value;
+  const qCount = Number(document.getElementById('create-room-qcount').value);
+  if (!name) { showError('create-room-error', 'اكتب اسمك أول شي'); return; }
+
+  const btn = document.getElementById('create-room-submit');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span> ثانية...';
+
+  const playerId = generatePlayerId();
+  let code = generateRoomCode();
+  const existing = await storageGetRoom(code);
+  if (existing) code = generateRoomCode();
+
+  const room = {
+    code, hostId: playerId, status: 'lobby', categoryId: catId, questionCount: qCount,
+    players: [{ id: playerId, name, score: 0 }], currentQuestionIndex: -1, questionRevealedAt: null,
+  };
+
+  const ok = await storageSetRoom(room);
+  btn.disabled = false;
+  btn.textContent = 'سوّي المجلس';
+
+  if (!ok) { showError('create-room-error', 'ما قدرنا نسوي المجلس، شيك على النت وحاول مرة ثانية'); return; }
+
+  state.room.code = code;
+  state.room.playerId = playerId;
+  state.room.playerName = name;
+  state.room.isHost = true;
+
+  go('lobby');
+  enterLobby();
+}
+
+/* ---------- join majlis ---------- */
+async function submitJoinRoom() {
+  hideError('join-room-error');
+  const code = document.getElementById('join-room-code').value.trim().toUpperCase();
+  const name = document.getElementById('join-room-name').value.trim();
+
+  if (code.length !== 4) { showError('join-room-error', 'الكود لازم يكون ٤ خانات'); return; }
+  if (!name) { showError('join-room-error', 'اكتب اسمك'); return; }
+
+  const btn = document.getElementById('join-room-submit');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span> ثانية...';
+
+  const room = await storageGetRoom(code);
+  btn.disabled = false;
+  btn.textContent = 'يلا انضم';
+
+  if (!room) { showError('join-room-error', 'ما لقينا مجلس بهذا الكود، تأكد منه وحاول مرة ثانية'); return; }
+  if (room.status !== 'lobby') { showError('join-room-error', 'هذا المجلس بدأ يلعب أو خلص بالفعل'); return; }
+  if (room.players.length >= 12) { showError('join-room-error', 'المجلس مليان، عذراً'); return; }
+
+  const playerId = generatePlayerId();
+  room.players.push({ id: playerId, name, score: 0 });
+  const ok = await storageSetRoom(room);
+  if (!ok) { showError('join-room-error', 'ما قدرنا ندخّلك، حاول مرة ثانية'); return; }
+
+  state.room.code = code;
+  state.room.playerId = playerId;
+  state.room.playerName = name;
+  state.room.isHost = false;
+
+  go('lobby');
+  enterLobby();
+}
+
+function copyRoomCode() {
+  const code = state.room.code;
+  if (!code) return;
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(code).then(() => showToast('نسخنا الكود لك')).catch(() => showToast('ما قدرنا ننسخ', true));
+  } else { showToast('الكود: ' + code); }
+}
+
+function confirmLeaveRoom() {
+  if (confirm('تبي تطلع من المجلس؟')) {
+    stopRoomPolling();
+    state.room.code = null;
+    state.room.playerId = null;
+    state.room.isHost = false;
+    go('home');
+  }
+}
+
+/* ---------- lobby ---------- */
+function enterLobby() {
+  document.getElementById('lobby-code').textContent = state.room.code;
+  state.room.lastQuestionIndex = -1;
+  state.room.answeredThisQuestion = false;
+  pollRoomOnce();
+  startRoomPolling();
+}
+function startRoomPolling() { stopRoomPolling(); state.room.pollTimer = setInterval(pollRoomOnce, 2000); }
+function stopRoomPolling() { if (state.room.pollTimer) { clearInterval(state.room.pollTimer); state.room.pollTimer = null; } }
+
+async function pollRoomOnce() {
+  if (!state.room.code) return;
+  const room = await storageGetRoom(state.room.code);
+  if (!room) return;
+  if (room.status === 'lobby') renderLobby(room);
+  else if (room.status === 'active') await renderRoomQuiz(room);
+  else if (room.status === 'finished') await renderRoomResults(room);
+}
+
+function renderLobby(room) {
+  const isHost = state.room.isHost;
+  const cat = CAT_BY_ID[room.categoryId];
+  document.getElementById('lobby-cat-info').textContent = `${cat.name} · ${arabicNum(room.questionCount)} أسئلة`;
+
+  const listEl = document.getElementById('lobby-player-list');
+  listEl.innerHTML = room.players.map(p => `
+    <div class="player-row">
+      <span class="pname">
+        <span class="avatar-dot" style="background:${avatarColorFor(p.id)}">${p.name.charAt(0)}</span>
+        ${p.name}
+        ${p.id === room.hostId ? '<span class="host-badge">صاحب المجلس</span>' : ''}
+      </span>
+    </div>
+  `).join('');
+
+  const hostControls = document.getElementById('lobby-host-controls');
+  const guestWaiting = document.getElementById('lobby-guest-waiting');
+
+  if (isHost) {
+    guestWaiting.style.display = 'none';
+    hostControls.style.display = 'block';
+    hostControls.innerHTML = `
+      <button class="btn btn-primary btn-block btn-lg" id="lobby-start-btn" onclick="startRoomQuiz()">
+        ${room.players.length < 2 ? 'يلا ابدأ (تقدر تلعب لحالك أو تنتظر)' : 'يلا بدّينا'}
+      </button>`;
+  } else {
+    hostControls.style.display = 'none';
+    hostControls.innerHTML = '';
+    guestWaiting.style.display = 'block';
+  }
+}
+
+async function startRoomQuiz() {
+  if (!state.room.isHost) return;
+  const room = await storageGetRoom(state.room.code);
+  if (!room) { showToast('ما قدرنا نبدأ، حاول مرة ثانية', true); return; }
+  room.status = 'active';
+  room.currentQuestionIndex = 0;
+  room.questionRevealedAt = Date.now();
+  await storageSetRoom(room);
+  go('room-quiz');
+  state.room.lastQuestionIndex = -1;
+  await renderRoomQuiz(room);
+}
+
+/* ---------- room quiz (live) ---------- */
+async function renderRoomQuiz(room) {
+  go('room-quiz');
+  const qIndex = room.currentQuestionIndex;
+  const cat = CAT_BY_ID[room.categoryId];
+  const questions = QUESTION_BANK[room.categoryId].slice(0, room.questionCount);
+  const q = questions[qIndex];
+  const me = room.players.find(p => p.id === state.room.playerId);
+
+  document.getElementById('room-quiz-cat-label').textContent = cat.name;
+  document.getElementById('room-quiz-progress-label').textContent = `السؤال ${arabicNum(qIndex + 1)} من ${arabicNum(room.questionCount)}`;
+  document.getElementById('room-quiz-score-pill').textContent = `${arabicNum(me ? me.score : 0)} نقطة`;
+  document.getElementById('room-quiz-progress-fill').style.width = `${(qIndex / room.questionCount) * 100}%`;
+
+  if (qIndex !== state.room.lastQuestionIndex) {
+    state.room.lastQuestionIndex = qIndex;
+    state.room.answeredThisQuestion = false;
+  }
+
+  const answers = await storageGetAnswers(room.code, qIndex);
+  const myAnswer = answers[state.room.playerId];
+  if (myAnswer) state.room.answeredThisQuestion = true;
+
+  document.getElementById('room-quiz-question-text').textContent = q.q;
+  const letters = ['أ', 'ب', 'ج', 'د'];
+  const choicesEl = document.getElementById('room-quiz-choices');
+  const disabled = state.room.answeredThisQuestion;
+  choicesEl.innerHTML = q.choices.map((choice, idx) => {
+    let cls = 'choice';
+    if (disabled && myAnswer) {
+      if (idx === q.correct) cls += ' correct';
+      else if (idx === myAnswer.choiceIndex) cls += ' wrong';
+    }
+    return `<button class="${cls}" data-idx="${idx}" onclick="answerRoomQuestion(${idx})" ${disabled ? 'disabled' : ''}>
+      <span class="choice-row"><span class="choice-letter">${letters[idx]}</span><span>${choice}</span></span>
+    </button>`;
+  }).join('');
+
+  const statusEl = document.getElementById('room-quiz-player-status');
+  statusEl.innerHTML = room.players.map(p => {
+    const hasAnswered = !!answers[p.id];
+    return `<div class="waiting-row" style="justify-content:space-between;color:var(--text-dark);">
+      <span style="display:flex;align-items:center;gap:9px;">
+        <span class="avatar-dot" style="background:${avatarColorFor(p.id)};width:22px;height:22px;font-size:10px;">${p.name.charAt(0)}</span>
+        ${p.name}
+      </span>
+      <span style="font-size:12px;color:${hasAnswered ? 'var(--green)' : '#999'};">${hasAnswered ? '✓ جاوب' : 'يفكر...'}</span>
+    </div>`;
+  }).join('');
+
+  const footer = document.getElementById('room-quiz-host-footer');
+  if (state.room.isHost) {
+    const allAnswered = room.players.every(p => !!answers[p.id]);
+    const isLast = qIndex === room.questionCount - 1;
+    footer.innerHTML = `
+      <button class="btn btn-primary btn-block btn-lg" onclick="hostAdvanceQuestion()" ${allAnswered ? '' : 'disabled'}>
+        ${allAnswered ? (isLast ? 'خلصنا، شوف النتائج' : 'السؤال اللي بعده') : 'ننتظر البقية يجاوبون...'}
+      </button>`;
+  } else {
+    footer.innerHTML = '';
+  }
+}
+
+async function answerRoomQuestion(idx) {
+  if (state.room.answeredThisQuestion) return;
+  state.room.answeredThisQuestion = true;
+
+  const room = await storageGetRoom(state.room.code);
+  if (!room) { state.room.answeredThisQuestion = false; showToast('صار خطأ، حاول مرة ثانية', true); return; }
+  const qIndex = room.currentQuestionIndex;
+  const questions = QUESTION_BANK[room.categoryId].slice(0, room.questionCount);
+  const q = questions[qIndex];
+  const correct = idx === q.correct;
+
+  const answers = await storageGetAnswers(room.code, qIndex);
+  answers[state.room.playerId] = { choiceIndex: idx, correct };
+  await storageSetAnswers(room.code, qIndex, answers);
+
+  if (correct) {
+    const freshRoom = await storageGetRoom(room.code);
+    if (freshRoom) {
+      const p = freshRoom.players.find(pl => pl.id === state.room.playerId);
+      if (p) p.score += 1;
+      await storageSetRoom(freshRoom);
+    }
+  }
+  await pollRoomOnce();
+}
+
+async function hostAdvanceQuestion() {
+  if (!state.room.isHost) return;
+  const room = await storageGetRoom(state.room.code);
+  if (!room) return;
+  const isLast = room.currentQuestionIndex >= room.questionCount - 1;
+  if (isLast) room.status = 'finished';
+  else { room.currentQuestionIndex += 1; room.questionRevealedAt = Date.now(); }
+  await storageSetRoom(room);
+  await pollRoomOnce();
+}
+
+/* ---------- room results / leaderboard ---------- */
+async function renderRoomResults(room) {
+  stopRoomPolling();
+  go('room-results');
+  const sorted = [...room.players].sort((a, b) => b.score - a.score);
+  const medalFor = (i) => i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : arabicNum(i + 1);
+  const el = document.getElementById('room-leaderboard');
+  el.innerHTML = sorted.map((p, i) => `
+    <div class="leaderboard-row ${i === 0 ? 'first' : ''}">
+      <span class="leaderboard-rank">${medalFor(i)}</span>
+      <span class="avatar-dot" style="background:${avatarColorFor(p.id)}">${p.name.charAt(0)}</span>
+      <span style="flex:1;font-weight:600;font-size:14px;">${p.name}${p.id === state.room.playerId ? ' (إنت)' : ''}</span>
+      <span style="font-family:var(--font-display);font-weight:800;color:var(--maroon);font-size:14px;">${arabicNum(p.score)} نقطة</span>
+    </div>
+  `).join('');
+}
+
+/* ============================================================
+   PWA: install prompt + service worker registration
+============================================================= */
+let deferredInstallPrompt = null;
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault();
+  deferredInstallPrompt = e;
+  if (!localStorage.getItem('installBannerDismissed')) document.getElementById('install-banner').classList.add('show');
+});
+async function installApp() {
+  const banner = document.getElementById('install-banner');
+  if (!deferredInstallPrompt) { banner.classList.remove('show'); return; }
+  deferredInstallPrompt.prompt();
+  const { outcome } = await deferredInstallPrompt.userChoice;
+  deferredInstallPrompt = null;
+  banner.classList.remove('show');
+  if (outcome === 'accepted') showToast('ثبّتنا التطبيق، يعطيك العافية');
+}
+function dismissInstallBanner() {
+  document.getElementById('install-banner').classList.remove('show');
+  try { localStorage.setItem('installBannerDismissed', '1'); } catch (e) {}
+}
+window.addEventListener('appinstalled', () => { document.getElementById('install-banner').classList.remove('show'); deferredInstallPrompt = null; });
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => { navigator.serviceWorker.register('sw.js').catch(() => {}); });
+}
+
+/* ============================================================
+   INIT
+============================================================= */
+loadProfile();
+syncAccountChip();
+renderHomeCarousel();
+renderExploreGrid();
+renderHomeCategoryDescList();
+syncTabBar();
+</script>
+</body>
+</html>
